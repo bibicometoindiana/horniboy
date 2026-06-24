@@ -2,212 +2,786 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Hornyboy</title>
+  <title>Horniboy</title>
   <style>
+    *, *::before, *::after { box-sizing: border-box; }
+
     body {
       margin: 0;
       display: flex;
       flex-direction: column;
       height: 100vh;
       font-family: sans-serif;
-      background: #f5f5f5;
-      color: #000;
+      background: #1e1e1e;
+      color: #e0e0e0;
+      font-size: 13px;
     }
+
+    /* ── Search bar ────────────────────────────────────────── */
     #search-bar {
       display: flex;
-      flex-wrap: wrap;
-      padding: 10px;
-      background: #ddd;
-      gap: 5px;
+      align-items: center;
+      padding: 6px 8px;
+      background: #2a2a2a;
+      border-bottom: 1px solid #444;
+      gap: 6px;
+      flex-shrink: 0;
     }
-    input[type="text"] {
+    #search-bar input[type="text"] {
       flex: 1;
-      padding: 6px;
+      padding: 5px 8px;
       font-size: 14px;
-      border: 1px solid #999;
-      background: #fff;
-      color: #000;
+      border: 1px solid #555;
+      border-radius: 4px;
+      background: #333;
+      color: #fff;
+      outline: none;
     }
-    button {
-      padding: 6px 10px;
-      font-size: 14px;
-      background: #fff;
-      border: 1px solid #999;
+    #search-bar input[type="text"]:focus { border-color: #888; }
+    .btn {
+      padding: 5px 10px;
+      font-size: 12px;
+      background: #3a3a3a;
+      border: 1px solid #555;
+      border-radius: 4px;
+      color: #ddd;
       cursor: pointer;
+      white-space: nowrap;
     }
+    .btn:hover { background: #4a4a4a; }
+    .btn.primary { background: #2e5fa3; border-color: #4a80c4; color: #fff; }
+    .btn.primary:hover { background: #3a72bd; }
+
+    /* ── History bar ───────────────────────────────────────── */
     #history {
-      padding: 10px;
-      background: #eee;
-      font-size: 14px;
-      overflow-y: auto;
-      max-height: 100px;
+      padding: 4px 8px;
+      background: #252525;
+      border-bottom: 1px solid #3a3a3a;
+      font-size: 12px;
+      overflow-x: auto;
+      white-space: nowrap;
+      flex-shrink: 0;
+      min-height: 26px;
     }
+    #history .hist-label { color: #888; margin-right: 6px; }
+    #history .hist-btn {
+      display: inline-block;
+      padding: 2px 8px;
+      margin-right: 4px;
+      background: #333;
+      border: 1px solid #555;
+      border-radius: 3px;
+      color: #ccc;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    #history .hist-btn:hover { background: #444; color: #fff; }
+
+    /* ── Groups ribbon ─────────────────────────────────────── */
+    #groups-ribbon {
+      display: flex;
+      align-items: center;
+      padding: 4px 8px;
+      background: #232323;
+      border-bottom: 1px solid #3a3a3a;
+      gap: 5px;
+      flex-shrink: 0;
+      flex-wrap: wrap;
+      min-height: 32px;
+    }
+    .groups-label { color: #888; font-size: 11px; white-space: nowrap; }
+
+    .group-pill {
+      display: inline-flex;
+      align-items: center;
+      padding: 3px 8px;
+      border-radius: 12px;
+      border: 1px solid #555;
+      background: #2e2e2e;
+      color: #bbb;
+      cursor: pointer;
+      gap: 4px;
+      font-size: 12px;
+      user-select: none;
+    }
+    .group-pill.active {
+      background: #2e5fa3;
+      border-color: #4a80c4;
+      color: #fff;
+    }
+    .group-pill:hover { filter: brightness(1.2); }
+    .group-pill .pill-name {
+      max-width: 120px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .group-pill .pill-edit,
+    .group-pill .pill-del {
+      font-size: 11px;
+      opacity: 0.6;
+      cursor: pointer;
+      padding: 0 2px;
+    }
+    .group-pill .pill-edit:hover,
+    .group-pill .pill-del:hover { opacity: 1; }
+
+    .group-pill-edit-input {
+      padding: 2px 6px;
+      font-size: 12px;
+      border: 1px solid #4a80c4;
+      border-radius: 10px;
+      background: #1a1a1a;
+      color: #fff;
+      outline: none;
+      width: 100px;
+    }
+
+    .btn-add-group {
+      font-size: 18px;
+      line-height: 1;
+      padding: 1px 8px;
+      border-radius: 12px;
+    }
+
+    /* ── URL ribbon ────────────────────────────────────────── */
+    #url-ribbon {
+      display: flex;
+      align-items: flex-start;
+      padding: 5px 8px;
+      background: #1c1c1c;
+      border-bottom: 1px solid #3a3a3a;
+      gap: 5px;
+      flex-shrink: 0;
+      flex-wrap: wrap;
+      min-height: 36px;
+    }
+    .url-label { color: #888; font-size: 11px; white-space: nowrap; margin-top: 5px; }
+
+    .url-chip {
+      display: inline-flex;
+      align-items: center;
+      padding: 3px 8px;
+      border-radius: 4px;
+      border: 1px solid #444;
+      background: #2a2a2a;
+      color: #bbb;
+      gap: 4px;
+      font-size: 12px;
+      user-select: none;
+      max-width: 260px;
+      overflow: hidden;
+    }
+    .url-chip.active {
+      border-color: #2e8b57;
+      background: #1a3a28;
+      color: #7fcc9a;
+    }
+    .url-chip.inactive {
+      opacity: 0.45;
+    }
+    .url-chip .chip-toggle {
+      cursor: pointer;
+      flex-shrink: 0;
+      font-size: 13px;
+    }
+    .url-chip .chip-name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      flex: 1;
+      cursor: pointer;
+      max-width: 140px;
+    }
+    .url-chip .chip-group-tag {
+      font-size: 10px;
+      background: #3a3a3a;
+      border-radius: 3px;
+      padding: 1px 4px;
+      color: #888;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .url-chip.active .chip-group-tag { background: #1e4d33; color: #5faa7a; }
+    .url-chip .chip-edit,
+    .url-chip .chip-del {
+      font-size: 11px;
+      opacity: 0.5;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .url-chip .chip-edit:hover,
+    .url-chip .chip-del:hover { opacity: 1; }
+
+    /* URL inline editor popup */
+    .url-editor-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.6);
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .url-editor-box {
+      background: #2a2a2a;
+      border: 1px solid #555;
+      border-radius: 8px;
+      padding: 18px 20px;
+      width: 520px;
+      max-width: 95vw;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .url-editor-box h3 { margin: 0; font-size: 14px; color: #ddd; }
+    .url-editor-box label { font-size: 12px; color: #999; }
+    .url-editor-box input, .url-editor-box select {
+      width: 100%;
+      padding: 6px 8px;
+      font-size: 13px;
+      border: 1px solid #555;
+      border-radius: 4px;
+      background: #1a1a1a;
+      color: #fff;
+      outline: none;
+    }
+    .url-editor-box input:focus, .url-editor-box select:focus { border-color: #4a80c4; }
+    .url-editor-hint { font-size: 11px; color: #666; }
+    .url-editor-actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+    .btn-add-url {
+      font-size: 18px;
+      line-height: 1;
+      padding: 1px 8px;
+      border-radius: 4px;
+    }
+
+    /* ── Controls bar ──────────────────────────────────────── */
     #controls {
       display: flex;
       flex-wrap: wrap;
-      gap: 10px;
-      padding: 5px 10px;
-      background: #ddd;
-      font-size: 14px;
+      gap: 8px;
+      padding: 4px 8px;
+      background: #222;
+      border-bottom: 1px solid #3a3a3a;
+      font-size: 12px;
+      flex-shrink: 0;
+      min-height: 30px;
     }
+    .ctrl-group {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 6px;
+      background: #2a2a2a;
+      border: 1px solid #3a3a3a;
+      border-radius: 4px;
+    }
+    .ctrl-group strong { color: #aaa; margin-right: 3px; }
+    .ctrl-btn {
+      padding: 2px 6px;
+      font-size: 12px;
+      background: #333;
+      border: 1px solid #4a4a4a;
+      border-radius: 3px;
+      color: #ccc;
+      cursor: pointer;
+    }
+    .ctrl-btn:hover { background: #444; }
+    .loading-indicator { font-size: 11px; color: #4caf50; }
+
+    /* ── Webview container ─────────────────────────────────── */
     #views {
       flex: 1;
       display: flex;
       overflow: auto;
+      min-height: 0;
     }
     webview {
       flex: 1;
       border: none;
-      min-width: 50%;
+      border-right: 1px solid #333;
+      min-width: 300px;
     }
-    .hidden {
-      display: none !important;
-    }
-    .loading-indicator {
-      font-size: 12px;
-      color: green;
-      padding-left: 10px;
-    }
+    webview:last-child { border-right: none; }
+    .hidden { display: none !important; }
   </style>
 </head>
 <body>
+
+  <!-- Search bar -->
   <div id="search-bar">
-    <input type="text" id="searchInput" placeholder="Search for products...">
-    <button id="searchBtn">Search</button>
-    <button id="clearBtn">Clear Cookies</button>
-    <button id="clearHistoryBtn">Clear History</button>
+    <input type="text" id="searchInput" placeholder="Search for products…">
+    <button class="btn primary" id="searchBtn">Search</button>
+    <button class="btn" id="clearBtn">Clear Cookies</button>
+    <button class="btn" id="clearHistoryBtn">Clear History</button>
   </div>
+
+  <!-- History -->
   <div id="history"></div>
+
+  <!-- Groups ribbon -->
+  <div id="groups-ribbon">
+    <span class="groups-label">GROUPS</span>
+    <div id="group-pills"></div>
+    <button class="btn btn-add-group" id="addGroupBtn" title="Add new group">+</button>
+  </div>
+
+  <!-- URL ribbon -->
+  <div id="url-ribbon">
+    <span class="url-label">URLS</span>
+    <div id="url-chips" style="display:flex;flex-wrap:wrap;gap:5px;flex:1;"></div>
+    <button class="btn btn-add-url" id="addUrlBtn" title="Add new URL">+</button>
+  </div>
+
+  <!-- Webview controls -->
   <div id="controls"></div>
+
+  <!-- Webviews -->
   <div id="views"></div>
 
+  <!-- URL editor modal (hidden) -->
+  <div class="url-editor-overlay hidden" id="urlEditorOverlay">
+    <div class="url-editor-box">
+      <h3 id="urlEditorTitle">Edit URL</h3>
+      <div>
+        <label>Label (display name)</label>
+        <input type="text" id="urlEditorLabel" placeholder="e.g. Hornbach DE">
+      </div>
+      <div>
+        <label>URL template — use <code>{search_keyword}</code> as placeholder</label>
+        <input type="text" id="urlEditorTemplate" placeholder="https://example.com/search?q={search_keyword}">
+        <div class="url-editor-hint">Example: https://www.hornbach.de/s/{search_keyword}</div>
+      </div>
+      <div>
+        <label>Group</label>
+        <select id="urlEditorGroup"></select>
+      </div>
+      <div class="url-editor-actions">
+        <button class="btn" id="urlEditorCancel">Cancel</button>
+        <button class="btn primary" id="urlEditorSave">Save</button>
+      </div>
+    </div>
+  </div>
+
   <script>
-    const searchInput = document.getElementById('searchInput');
-    const historyDiv = document.getElementById('history');
-    const viewsContainer = document.getElementById('views');
-    const controlsContainer = document.getElementById('controls');
+  // ════════════════════════════════════════════════════════
+  //  DATA MODEL
+  //  groups: [{ id, name, active }]
+  //  urls:   [{ id, label, template, groupId, enabled }]
+  // ════════════════════════════════════════════════════════
 
-    let searchHistory = JSON.parse(localStorage.getItem('searchHistory') || '[]');
-    let toggleStates = JSON.parse(localStorage.getItem('toggleStates') || '{}');
-    let webviews = [];
+  const DEFAULT_GROUP_ALL = { id: 'all', name: 'All', active: true };
 
-    function updateHistory(query) {
-      if (!searchHistory.includes(query)) {
-        searchHistory.unshift(query);
-        if (searchHistory.length > 10) searchHistory.pop();
-        localStorage.setItem('searchHistory', JSON.stringify(searchHistory));
-      }
-      renderHistory();
+  function loadData() {
+    let groups = JSON.parse(localStorage.getItem('hb_groups') || 'null');
+    let urls   = JSON.parse(localStorage.getItem('hb_urls')   || 'null');
+
+    if (!groups || !urls) {
+      // Migrate from old urls.txt format via electronAPI, or set defaults
+      groups = [
+        { id: 'g1', name: 'Austria', active: true },
+        { id: 'g2', name: 'Germany', active: true },
+      ];
+      urls = [
+        { id: uid(), label: 'Hornbach DE', template: 'https://www.hornbach.de/s/{search_keyword}?f.dsall=im+Markt+vorrätig&isInitialRequest=false', groupId: 'g2', enabled: true },
+        { id: uid(), label: 'Bauhaus',     template: 'https://www.bauhaus.info/search?availability=561&page=1&q={search_keyword}', groupId: 'g2', enabled: true },
+        { id: uid(), label: 'Sonderpreis', template: 'https://www.sonderpreis-baumarkt.de/search?q={search_keyword}&search-button=&lang=de_DE', groupId: 'g2', enabled: true },
+        { id: uid(), label: 'OBI AT',      template: 'https://www.obi.at/search/{search_keyword}?_availability=store', groupId: 'g1', enabled: true },
+        { id: uid(), label: 'OBI DE',      template: 'https://www.obi.de/search/{search_keyword}?_availability=store', groupId: 'g2', enabled: true },
+      ];
+      saveData(groups, urls);
     }
+    return { groups, urls };
+  }
 
-    function renderHistory() {
-      historyDiv.innerHTML = '<strong>Search History:</strong> ';
-      searchHistory.forEach(term => {
-        const btn = document.createElement('button');
-        btn.textContent = term;
-        btn.style.marginRight = '5px';
-        btn.onclick = () => {
-          searchInput.value = term;
-          performSearch();
-        };
-        historyDiv.appendChild(btn);
+  function saveData(groups, urls) {
+    localStorage.setItem('hb_groups', JSON.stringify(groups));
+    localStorage.setItem('hb_urls',   JSON.stringify(urls));
+    // Also persist to urls.txt via IPC so it's not lost across installs
+    if (window.electronAPI && window.electronAPI.saveConfig) {
+      window.electronAPI.saveConfig({ groups, urls });
+    }
+  }
+
+  function uid() {
+    return Math.random().toString(36).slice(2, 10);
+  }
+
+  // ════════════════════════════════════════════════════════
+  //  STATE
+  // ════════════════════════════════════════════════════════
+  let { groups, urls } = loadData();
+  let searchHistory = JSON.parse(localStorage.getItem('searchHistory') || '[]');
+  let webviews = [];
+
+  // ════════════════════════════════════════════════════════
+  //  COMPUTED HELPERS
+  // ════════════════════════════════════════════════════════
+
+  /** IDs of currently active groups */
+  function activeGroupIds() {
+    return groups.filter(g => g.active).map(g => g.id);
+  }
+
+  /**
+   * Returns the effective set of URLs to load:
+   * enabled AND (group is active OR no groups active → show all)
+   */
+  function effectiveUrls() {
+    const ag = activeGroupIds();
+    return urls.filter(u => {
+      if (!u.enabled) return false;
+      if (ag.length === 0) return true; // all groups off → show all enabled
+      return ag.includes(u.groupId) || !u.groupId;
+    });
+  }
+
+  // ════════════════════════════════════════════════════════
+  //  RENDER — HISTORY
+  // ════════════════════════════════════════════════════════
+  function renderHistory() {
+    const div = document.getElementById('history');
+    div.innerHTML = '';
+    if (searchHistory.length === 0) return;
+    const lbl = document.createElement('span');
+    lbl.className = 'hist-label';
+    lbl.textContent = 'History:';
+    div.appendChild(lbl);
+    searchHistory.forEach(term => {
+      const b = document.createElement('span');
+      b.className = 'hist-btn';
+      b.textContent = term;
+      b.onclick = () => { document.getElementById('searchInput').value = term; performSearch(); };
+      div.appendChild(b);
+    });
+  }
+
+  // ════════════════════════════════════════════════════════
+  //  RENDER — GROUPS RIBBON
+  // ════════════════════════════════════════════════════════
+  function renderGroups() {
+    const container = document.getElementById('group-pills');
+    container.innerHTML = '';
+
+    groups.forEach(g => {
+      const pill = document.createElement('div');
+      pill.className = 'group-pill' + (g.active ? ' active' : '');
+      pill.dataset.id = g.id;
+      pill.innerHTML = `
+        <span class="pill-name" title="${escHtml(g.name)}">${escHtml(g.name)}</span>
+        <span class="pill-edit" title="Rename group">✎</span>
+        <span class="pill-del" title="Delete group">✕</span>
+      `;
+
+      // Toggle active
+      pill.querySelector('.pill-name').addEventListener('click', () => {
+        g.active = !g.active;
+        saveData(groups, urls);
+        renderGroups();
+        renderUrlChips();
       });
-    }
 
-    function clearWebviews() {
-      viewsContainer.innerHTML = '';
-      controlsContainer.innerHTML = '';
-      webviews = [];
-    }
-
-    function extractDomain(url) {
-      try {
-        return new URL(url).hostname;
-      } catch {
-        return 'Site';
-      }
-    }
-
-    function setLocationByDomain(domain) {
-      if (domain.endsWith('.de')) {
-        window.navigator.geolocation.getCurrentPosition = () => ({
-          coords: { latitude: 51.1657, longitude: 10.4515 } // Germany
-        });
-      } else if (domain.endsWith('.at')) {
-        window.navigator.geolocation.getCurrentPosition = () => ({
-          coords: { latitude: 47.5162, longitude: 14.5501 } // Austria
-        });
-      }
-    }
-
-    function toggleWebview(index, domain) {
-      const webview = document.getElementById(`webview-${index}`);
-      webview.classList.toggle('hidden');
-      toggleStates[domain] = webview.classList.contains('hidden');
-      localStorage.setItem('toggleStates', JSON.stringify(toggleStates));
-    }
-
-    async function performSearch() {
-      const query = searchInput.value.trim();
-      if (!query) return;
-
-      updateHistory(query);
-      clearWebviews();
-
-      const urls = await window.electronAPI.getSearchUrls();
-      urls.forEach((template, index) => {
-        const finalUrl = template.replace('{search_keyword}', encodeURIComponent(query));
-        const siteName = extractDomain(template);
-
-        const webview = document.createElement('webview');
-        webview.src = finalUrl;
-        webview.setAttribute('allowpopups', '');
-        webview.id = `webview-${index}`;
-        viewsContainer.appendChild(webview);
-        webviews.push(webview);
-
-        const controlGroup = document.createElement('div');
-        controlGroup.innerHTML = `
-          <strong>${siteName}:</strong>
-          <button onclick="document.getElementById('webview-${index}').goBack()">◀️</button>
-          <button onclick="document.getElementById('webview-${index}').goForward()">▶️</button>
-          <button onclick="document.getElementById('webview-${index}').reload()">🔄</button>
-          <button onclick="toggleWebview(${index}, '${siteName}')">Toggle</button>
-          <span id="loading-${index}" class="loading-indicator"></span>
-        `;
-        controlsContainer.appendChild(controlGroup);
-
-        webview.addEventListener('did-start-loading', () => {
-          document.getElementById(`loading-${index}`).textContent = '[Loading…]';
-        });
-        webview.addEventListener('did-stop-loading', () => {
-          document.getElementById(`loading-${index}`).textContent = '';
-        });
-
-        // Restore toggle state if previously hidden
-        if (toggleStates[siteName]) {
-          webview.classList.add('hidden');
-        }
-        
-        //setLocationByDomain(siteName);
+      // Rename
+      pill.querySelector('.pill-edit').addEventListener('click', (e) => {
+        e.stopPropagation();
+        startGroupRename(pill, g);
       });
+
+      // Delete group
+      pill.querySelector('.pill-del').addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (!confirm(`Delete group "${g.name}"? URLs in this group will become ungrouped.`)) return;
+        urls.forEach(u => { if (u.groupId === g.id) u.groupId = null; });
+        groups = groups.filter(x => x.id !== g.id);
+        saveData(groups, urls);
+        renderGroups();
+        renderUrlChips();
+      });
+
+      container.appendChild(pill);
+    });
+  }
+
+  function startGroupRename(pillEl, g) {
+    const nameSpan = pillEl.querySelector('.pill-name');
+    const input = document.createElement('input');
+    input.className = 'group-pill-edit-input';
+    input.value = g.name;
+    pillEl.replaceChild(input, nameSpan);
+    input.focus();
+    input.select();
+
+    function commit() {
+      const val = input.value.trim();
+      if (val) g.name = val;
+      saveData(groups, urls);
+      renderGroups();
+      renderUrlChips();
+    }
+    input.addEventListener('blur', commit);
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); commit(); }
+      if (e.key === 'Escape') { renderGroups(); }
+    });
+  }
+
+  // ════════════════════════════════════════════════════════
+  //  RENDER — URL CHIPS
+  // ════════════════════════════════════════════════════════
+  function renderUrlChips() {
+    const ag = activeGroupIds();
+    const container = document.getElementById('url-chips');
+    container.innerHTML = '';
+
+    urls.forEach(u => {
+      const inActiveGroup = ag.length === 0 || ag.includes(u.groupId) || !u.groupId;
+      const isEffective = u.enabled && inActiveGroup;
+
+      const chip = document.createElement('div');
+      chip.className = 'url-chip ' + (isEffective ? 'active' : 'inactive');
+      chip.dataset.id = u.id;
+
+      const group = groups.find(g => g.id === u.groupId);
+      const groupTag = group ? `<span class="chip-group-tag">${escHtml(group.name)}</span>` : '';
+
+      chip.innerHTML = `
+        <span class="chip-toggle" title="${u.enabled ? 'Disable' : 'Enable'}">${u.enabled ? '✔' : '○'}</span>
+        <span class="chip-name" title="${escHtml(u.template)}">${escHtml(u.label || extractDomain(u.template))}</span>
+        ${groupTag}
+        <span class="chip-edit" title="Edit URL">✎</span>
+        <span class="chip-del" title="Delete URL">✕</span>
+      `;
+
+      // Toggle enabled
+      chip.querySelector('.chip-toggle').addEventListener('click', () => {
+        u.enabled = !u.enabled;
+        saveData(groups, urls);
+        renderUrlChips();
+      });
+
+      // Edit URL
+      chip.querySelector('.chip-edit').addEventListener('click', () => {
+        openUrlEditor(u);
+      });
+
+      // Click name → open editor too
+      chip.querySelector('.chip-name').addEventListener('click', () => {
+        openUrlEditor(u);
+      });
+
+      // Delete URL
+      chip.querySelector('.chip-del').addEventListener('click', () => {
+        if (!confirm(`Delete "${u.label || extractDomain(u.template)}"?`)) return;
+        urls = urls.filter(x => x.id !== u.id);
+        saveData(groups, urls);
+        renderUrlChips();
+      });
+
+      container.appendChild(chip);
+    });
+  }
+
+  // ════════════════════════════════════════════════════════
+  //  URL EDITOR MODAL
+  // ════════════════════════════════════════════════════════
+  let _editingUrlId = null;
+
+  function openUrlEditor(u) {
+    _editingUrlId = u ? u.id : null;
+    document.getElementById('urlEditorTitle').textContent = u ? 'Edit URL' : 'Add URL';
+    document.getElementById('urlEditorLabel').value    = u ? u.label    : '';
+    document.getElementById('urlEditorTemplate').value = u ? u.template : '';
+
+    // Populate group dropdown
+    const sel = document.getElementById('urlEditorGroup');
+    sel.innerHTML = '<option value="">— no group —</option>';
+    groups.forEach(g => {
+      const opt = document.createElement('option');
+      opt.value = g.id;
+      opt.textContent = g.name;
+      if (u && u.groupId === g.id) opt.selected = true;
+      sel.appendChild(opt);
+    });
+
+    document.getElementById('urlEditorOverlay').classList.remove('hidden');
+    document.getElementById('urlEditorLabel').focus();
+  }
+
+  function closeUrlEditor() {
+    document.getElementById('urlEditorOverlay').classList.add('hidden');
+    _editingUrlId = null;
+  }
+
+  document.getElementById('urlEditorCancel').addEventListener('click', closeUrlEditor);
+  document.getElementById('urlEditorOverlay').addEventListener('click', (e) => {
+    if (e.target === document.getElementById('urlEditorOverlay')) closeUrlEditor();
+  });
+
+  document.getElementById('urlEditorSave').addEventListener('click', () => {
+    const label    = document.getElementById('urlEditorLabel').value.trim();
+    const template = document.getElementById('urlEditorTemplate').value.trim();
+    const groupId  = document.getElementById('urlEditorGroup').value || null;
+
+    if (!template) { alert('URL template is required.'); return; }
+    if (!template.includes('{search_keyword}')) {
+      if (!confirm('URL does not contain {search_keyword}. Save anyway?')) return;
     }
 
-    document.getElementById('searchBtn').addEventListener('click', performSearch);
-    document.getElementById('clearBtn').addEventListener('click', () => {
-      window.electronAPI.clearCookies();
-      alert('Cookies cleared!');
-    });
-    document.getElementById('clearHistoryBtn').addEventListener('click', () => {
-      searchHistory = [];
-      localStorage.removeItem('searchHistory');
-      renderHistory();
-    });
-    searchInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') performSearch();
-    });
+    if (_editingUrlId) {
+      const u = urls.find(x => x.id === _editingUrlId);
+      if (u) { u.label = label; u.template = template; u.groupId = groupId; }
+    } else {
+      urls.push({ id: uid(), label, template, groupId, enabled: true });
+    }
 
+    saveData(groups, urls);
+    closeUrlEditor();
+    renderUrlChips();
+  });
+
+  // ════════════════════════════════════════════════════════
+  //  ADD BUTTONS
+  // ════════════════════════════════════════════════════════
+  document.getElementById('addGroupBtn').addEventListener('click', () => {
+    const name = prompt('New group name:');
+    if (!name || !name.trim()) return;
+    groups.push({ id: uid(), name: name.trim(), active: true });
+    saveData(groups, urls);
+    renderGroups();
+    renderUrlChips();
+  });
+
+  document.getElementById('addUrlBtn').addEventListener('click', () => {
+    openUrlEditor(null);
+  });
+
+  // ════════════════════════════════════════════════════════
+  //  SEARCH
+  // ════════════════════════════════════════════════════════
+  function updateHistory(query) {
+    if (!searchHistory.includes(query)) {
+      searchHistory.unshift(query);
+      if (searchHistory.length > 20) searchHistory.pop();
+      localStorage.setItem('searchHistory', JSON.stringify(searchHistory));
+    }
     renderHistory();
+  }
+
+  function clearWebviews() {
+    document.getElementById('views').innerHTML = '';
+    document.getElementById('controls').innerHTML = '';
+    webviews = [];
+  }
+
+  function extractDomain(url) {
+    try { return new URL(url).hostname; } catch { return 'Site'; }
+  }
+
+  function escHtml(str) {
+    return (str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function performSearch() {
+    const query = document.getElementById('searchInput').value.trim();
+    if (!query) return;
+
+    updateHistory(query);
+    clearWebviews();
+
+    const active = effectiveUrls();
+    if (active.length === 0) {
+      document.getElementById('views').innerHTML = '<div style="padding:20px;color:#888;">No active URLs. Enable some URLs or activate a group.</div>';
+      return;
+    }
+
+    active.forEach((u, index) => {
+      const finalUrl = u.template.replace('{search_keyword}', encodeURIComponent(query));
+      const siteName = u.label || extractDomain(u.template);
+
+      const webview = document.createElement('webview');
+      webview.src = finalUrl;
+      webview.setAttribute('allowpopups', '');
+      webview.id = `webview-${index}`;
+      document.getElementById('views').appendChild(webview);
+      webviews.push(webview);
+
+      const ctrl = document.createElement('div');
+      ctrl.className = 'ctrl-group';
+      ctrl.id = `ctrl-${index}`;
+      ctrl.innerHTML = `
+        <strong>${escHtml(siteName)}</strong>
+        <button class="ctrl-btn" onclick="document.getElementById('webview-${index}').goBack()">◀</button>
+        <button class="ctrl-btn" onclick="document.getElementById('webview-${index}').goForward()">▶</button>
+        <button class="ctrl-btn" onclick="document.getElementById('webview-${index}').reload()">↺</button>
+        <button class="ctrl-btn" onclick="toggleWebview(${index})">Hide</button>
+        <span id="loading-${index}" class="loading-indicator"></span>
+      `;
+      document.getElementById('controls').appendChild(ctrl);
+
+      webview.addEventListener('did-start-loading', () => {
+        const el = document.getElementById(`loading-${index}`);
+        if (el) el.textContent = 'Loading…';
+        const btn = ctrl.querySelectorAll('.ctrl-btn')[3];
+        if (btn) btn.textContent = 'Hide';
+      });
+      webview.addEventListener('did-stop-loading', () => {
+        const el = document.getElementById(`loading-${index}`);
+        if (el) el.textContent = '';
+      });
+    });
+  }
+
+  function toggleWebview(index) {
+    const wv = document.getElementById(`webview-${index}`);
+    const btn = document.querySelector(`#ctrl-${index} .ctrl-btn:nth-child(4)`);
+    if (!wv) return;
+    const hidden = wv.classList.toggle('hidden');
+    if (btn) btn.textContent = hidden ? 'Show' : 'Hide';
+  }
+
+  // ════════════════════════════════════════════════════════
+  //  EVENT LISTENERS
+  // ════════════════════════════════════════════════════════
+  document.getElementById('searchBtn').addEventListener('click', performSearch);
+  document.getElementById('searchInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter') performSearch();
+  });
+  document.getElementById('clearBtn').addEventListener('click', () => {
+    if (window.electronAPI) window.electronAPI.clearCookies();
+    alert('Cookies cleared!');
+  });
+  document.getElementById('clearHistoryBtn').addEventListener('click', () => {
+    searchHistory = [];
+    localStorage.removeItem('searchHistory');
+    renderHistory();
+  });
+
+  // ════════════════════════════════════════════════════════
+  //  INIT — try IPC config first, then fall back to localStorage
+  // ════════════════════════════════════════════════════════
+  async function init() {
+    // If localStorage has no data, try loading from config.json via IPC
+    const lsGroups = JSON.parse(localStorage.getItem('hb_groups') || 'null');
+    const lsUrls   = JSON.parse(localStorage.getItem('hb_urls')   || 'null');
+    if ((!lsGroups || !lsUrls) && window.electronAPI && window.electronAPI.loadConfig) {
+      try {
+        const cfg = await window.electronAPI.loadConfig();
+        if (cfg && cfg.groups && cfg.urls) {
+          groups = cfg.groups;
+          urls   = cfg.urls;
+          localStorage.setItem('hb_groups', JSON.stringify(groups));
+          localStorage.setItem('hb_urls',   JSON.stringify(urls));
+        }
+      } catch(e) { console.warn('IPC load-config failed', e); }
+    }
+    renderHistory();
+    renderGroups();
+    renderUrlChips();
+  }
+  init();
+
   </script>
 </body>
 </html>

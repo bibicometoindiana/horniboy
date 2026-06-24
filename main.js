@@ -1,6 +1,9 @@
 const { app, BrowserWindow, ipcMain, session } = require('electron');
 const path = require('path');
-const fs = require('fs');
+const fs   = require('fs');
+
+const CONFIG_PATH = path.join(__dirname, 'config.json');
+const URLS_PATH   = path.join(__dirname, 'urls.txt');
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -17,21 +20,43 @@ function createWindow() {
   win.loadFile('index.html');
 }
 
-ipcMain.handle('get-search-urls', async () => {
-  const filePath = path.join(__dirname, 'urls.txt');
+// ── Load config (groups + urls) ────────────────────────────
+ipcMain.handle('load-config', async () => {
   try {
-    const content = fs.readFileSync(filePath, 'utf-8');
-    const urls = content
-      .split('\n')
-      .map(line => line.trim())
-      .filter(line => line.includes('{search_keyword}'));
-    return urls;
+    if (fs.existsSync(CONFIG_PATH)) {
+      return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
+    }
+    // Fall back to legacy urls.txt
+    if (fs.existsSync(URLS_PATH)) {
+      const lines = fs.readFileSync(URLS_PATH, 'utf-8')
+        .split('\n')
+        .map(l => l.trim())
+        .filter(l => l && l.includes('{search_keyword}'));
+      return { legacyUrls: lines };
+    }
   } catch (err) {
-    console.error('Error reading urls.txt:', err);
-    return [];
+    console.error('Error loading config:', err);
+  }
+  return null;
+});
+
+// ── Save config (groups + urls) ────────────────────────────
+ipcMain.handle('save-config', async (event, config) => {
+  try {
+    fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2), 'utf-8');
+    // Also keep urls.txt in sync for backwards compatibility
+    if (config.urls && Array.isArray(config.urls)) {
+      const lines = config.urls.map(u => u.template).filter(Boolean).join('\n');
+      fs.writeFileSync(URLS_PATH, lines, 'utf-8');
+    }
+    return { ok: true };
+  } catch (err) {
+    console.error('Error saving config:', err);
+    return { ok: false, error: err.message };
   }
 });
 
+// ── Clear cookies ──────────────────────────────────────────
 ipcMain.on('clear-cookies', async () => {
   const ses = session.fromPartition('persist:dual-browser-session');
   await ses.clearStorageData({ storages: ['cookies'] });
