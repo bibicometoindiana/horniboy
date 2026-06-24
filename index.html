@@ -645,12 +645,31 @@
   //  ADD BUTTONS
   // ════════════════════════════════════════════════════════
   document.getElementById('addGroupBtn').addEventListener('click', () => {
-    const name = prompt('New group name:');
-    if (!name || !name.trim()) return;
-    groups.push({ id: uid(), name: name.trim(), active: true });
-    saveData(groups, urls);
-    renderGroups();
-    renderUrlChips();
+    // prompt() is disabled in Electron contextIsolation; use inline input instead
+    const container = document.getElementById('group-pills');
+    // Avoid duplicate inputs
+    if (container.querySelector('.group-pill-edit-input')) return;
+    const input = document.createElement('input');
+    input.className = 'group-pill-edit-input';
+    input.placeholder = 'Group name…';
+    input.style.marginRight = '4px';
+    container.appendChild(input);
+    input.focus();
+
+    function commit() {
+      const val = input.value.trim();
+      input.remove();
+      if (!val) return;
+      groups.push({ id: uid(), name: val, active: true });
+      saveData(groups, urls);
+      renderGroups();
+      renderUrlChips();
+    }
+    input.addEventListener('blur', commit);
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter')  { e.preventDefault(); commit(); }
+      if (e.key === 'Escape') { input.remove(); }
+    });
   });
 
   document.getElementById('addUrlBtn').addEventListener('click', () => {
