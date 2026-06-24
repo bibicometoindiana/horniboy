@@ -143,6 +143,17 @@
       padding: 1px 8px;
       border-radius: 12px;
     }
+    .btn-select-all {
+      padding: 2px 9px;
+      font-size: 11px;
+      border-radius: 10px;
+      border-color: #555;
+    }
+    .btn-select-all.all-active {
+      background: #2e5fa3;
+      border-color: #4a80c4;
+      color: #fff;
+    }
 
     /* ── URL ribbon ────────────────────────────────────────── */
     #url-ribbon {
@@ -325,6 +336,7 @@
   <div id="groups-ribbon">
     <span class="groups-label">GROUPS</span>
     <div id="group-pills"></div>
+    <button class="btn btn-select-all" id="selectAllGroupsBtn" title="Toggle all groups on/off">All</button>
     <button class="btn btn-add-group" id="addGroupBtn" title="Add new group">+</button>
   </div>
 
@@ -349,11 +361,47 @@
         <label>Label (display name)</label>
         <input type="text" id="urlEditorLabel" placeholder="e.g. Hornbach DE">
       </div>
+      <!-- Manual template -->
       <div>
-        <label>URL template — use <code>{search_keyword}</code> as placeholder</label>
+        <label>Manual URL template — use <code>{search_keyword}</code> as placeholder</label>
         <input type="text" id="urlEditorTemplate" placeholder="https://example.com/search?q={search_keyword}">
-        <div class="url-editor-hint">Example: https://www.hornbach.de/s/{search_keyword}</div>
+        <div class="url-editor-hint">Type or paste a template with <code>{search_keyword}</code> already placed.</div>
       </div>
+
+      <!-- Auto-detect section -->
+      <div id="autoDetectSection" style="background:#1a1a1a;border:1px solid #3a3a3a;border-radius:6px;padding:10px;display:flex;flex-direction:column;gap:8px;">
+        <div style="font-size:11px;color:#888;font-weight:bold;letter-spacing:0.05em;">AUTO-DETECT FROM REAL URL</div>
+        <div style="display:flex;gap:8px;">
+          <div style="flex:1;">
+            <label>Paste a real search result URL</label>
+            <input type="text" id="urlEditorRealUrl" placeholder="https://www.hornbach.de/s/bohrmaschine">
+          </div>
+          <div style="width:160px;">
+            <label>Search term you used</label>
+            <input type="text" id="urlEditorSearchTerm" placeholder="bohrmaschine">
+          </div>
+        </div>
+        <div id="autoDetectResult" style="display:none;">
+          <label>Auto-generated template</label>
+          <div style="display:flex;gap:6px;align-items:center;">
+            <input type="text" id="urlEditorAutoTemplate" readonly style="background:#111;color:#7fcc9a;border-color:#2e8b57;flex:1;">
+            <button class="btn" id="useAutoTemplateBtn" style="white-space:nowrap;">Use this ↑</button>
+          </div>
+        </div>
+        <div id="autoDetectError" style="display:none;font-size:11px;color:#e57373;"></div>
+      </div>
+
+      <!-- Template source choice -->
+      <div id="templateSourceRow" style="display:none;align-items:center;gap:12px;font-size:12px;">
+        <span style="color:#888;">Save using:</span>
+        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;color:#ccc;">
+          <input type="radio" name="templateSource" value="manual" id="srcManual"> Manual template
+        </label>
+        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;color:#7fcc9a;">
+          <input type="radio" name="templateSource" value="auto" id="srcAuto" checked> Auto-detected template
+        </label>
+      </div>
+
       <div>
         <label>Group</label>
         <select id="urlEditorGroup"></select>
@@ -464,6 +512,7 @@
   function renderGroups() {
     const container = document.getElementById('group-pills');
     container.innerHTML = '';
+    updateSelectAllBtn();
 
     groups.forEach(g => {
       const pill = document.createElement('div');
@@ -588,11 +637,66 @@
   // ════════════════════════════════════════════════════════
   let _editingUrlId = null;
 
+  // ── Auto-detect: replace all occurrences of term (plain + encoded) ─────────
+  function buildAutoTemplate(realUrl, term) {
+    if (!realUrl || !term) return null;
+    term = term.trim();
+    if (!term) return null;
+    const encoded = encodeURIComponent(term);
+    const encodedPlus = term.replace(/ /g, '+');
+    // Try encoded first, then plus-encoded, then plain
+    let result = realUrl;
+    let found = false;
+    if (encoded !== term && result.includes(encoded)) {
+      result = result.split(encoded).join('{search_keyword}');
+      found = true;
+    }
+    if (!found && encodedPlus !== term && result.includes(encodedPlus)) {
+      result = result.split(encodedPlus).join('{search_keyword}');
+      found = true;
+    }
+    if (!found && result.includes(term)) {
+      result = result.split(term).join('{search_keyword}');
+      found = true;
+    }
+    return found ? result : null;
+  }
+
+  function runAutoDetect() {
+    const realUrl  = document.getElementById('urlEditorRealUrl').value.trim();
+    const term     = document.getElementById('urlEditorSearchTerm').value.trim();
+    const resultEl = document.getElementById('autoDetectResult');
+    const errorEl  = document.getElementById('autoDetectError');
+    const srcRow   = document.getElementById('templateSourceRow');
+    errorEl.style.display = 'none';
+    resultEl.style.display = 'none';
+    if (!realUrl || !term) return;
+    const tmpl = buildAutoTemplate(realUrl, term);
+    if (tmpl) {
+      document.getElementById('urlEditorAutoTemplate').value = tmpl;
+      resultEl.style.display = 'block';
+      srcRow.style.display = 'flex';
+      document.getElementById('srcAuto').checked = true;
+    } else {
+      errorEl.textContent = 'Could not find "' + term + '" in the URL (tried plain, URL-encoded, plus-encoded).';
+      errorEl.style.display = 'block';
+      srcRow.style.display = 'none';
+    }
+  }
+
   function openUrlEditor(u) {
     _editingUrlId = u ? u.id : null;
     document.getElementById('urlEditorTitle').textContent = u ? 'Edit URL' : 'Add URL';
     document.getElementById('urlEditorLabel').value    = u ? u.label    : '';
     document.getElementById('urlEditorTemplate').value = u ? u.template : '';
+
+    // Reset auto-detect state
+    document.getElementById('urlEditorRealUrl').value    = '';
+    document.getElementById('urlEditorSearchTerm').value = '';
+    document.getElementById('autoDetectResult').style.display = 'none';
+    document.getElementById('autoDetectError').style.display  = 'none';
+    document.getElementById('templateSourceRow').style.display = 'none';
+    document.getElementById('srcManual').checked = true;
 
     // Populate group dropdown
     const sel = document.getElementById('urlEditorGroup');
@@ -609,6 +713,18 @@
     document.getElementById('urlEditorLabel').focus();
   }
 
+  // Wire auto-detect inputs
+  ['urlEditorRealUrl', 'urlEditorSearchTerm'].forEach(id => {
+    document.getElementById(id).addEventListener('input', runAutoDetect);
+  });
+
+  // "Use this ↑" copies auto-template to manual field and selects Manual
+  document.getElementById('useAutoTemplateBtn').addEventListener('click', () => {
+    const tmpl = document.getElementById('urlEditorAutoTemplate').value;
+    document.getElementById('urlEditorTemplate').value = tmpl;
+    document.getElementById('srcManual').checked = true;
+  });
+
   function closeUrlEditor() {
     document.getElementById('urlEditorOverlay').classList.add('hidden');
     _editingUrlId = null;
@@ -620,9 +736,14 @@
   });
 
   document.getElementById('urlEditorSave').addEventListener('click', () => {
-    const label    = document.getElementById('urlEditorLabel').value.trim();
-    const template = document.getElementById('urlEditorTemplate').value.trim();
-    const groupId  = document.getElementById('urlEditorGroup').value || null;
+    const label   = document.getElementById('urlEditorLabel').value.trim();
+    const groupId = document.getElementById('urlEditorGroup').value || null;
+
+    // Determine which template to use
+    const useAuto = document.getElementById('srcAuto') && document.getElementById('srcAuto').checked;
+    const manualTmpl = document.getElementById('urlEditorTemplate').value.trim();
+    const autoTmpl   = document.getElementById('urlEditorAutoTemplate').value.trim();
+    const template   = useAuto && autoTmpl ? autoTmpl : manualTmpl;
 
     if (!template) { alert('URL template is required.'); return; }
     if (!template.includes('{search_keyword}')) {
@@ -674,6 +795,23 @@
 
   document.getElementById('addUrlBtn').addEventListener('click', () => {
     openUrlEditor(null);
+  });
+
+  // ── Select All / Deselect All groups ──────────────────────────────────────
+  function updateSelectAllBtn() {
+    const btn = document.getElementById('selectAllGroupsBtn');
+    if (!btn) return;
+    const allActive = groups.length > 0 && groups.every(g => g.active);
+    btn.classList.toggle('all-active', allActive);
+    btn.title = allActive ? 'Deselect all groups' : 'Select all groups';
+  }
+
+  document.getElementById('selectAllGroupsBtn').addEventListener('click', () => {
+    const allActive = groups.every(g => g.active);
+    groups.forEach(g => { g.active = !allActive; });
+    saveData(groups, urls);
+    renderGroups();
+    renderUrlChips();
   });
 
   // ════════════════════════════════════════════════════════
