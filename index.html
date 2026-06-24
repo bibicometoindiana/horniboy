@@ -532,15 +532,28 @@
         startGroupRename(pill, g);
       });
 
-      // Delete group
+      // Delete group — click once to arm (turns red), click again to confirm
       pill.querySelector('.pill-del').addEventListener('click', (e) => {
         e.stopPropagation();
-        if (!confirm(`Delete group "${g.name}"? URLs in this group will become ungrouped.`)) return;
-        urls.forEach(u => { if (u.groupId === g.id) u.groupId = null; });
-        groups = groups.filter(x => x.id !== g.id);
-        saveData(groups, urls);
-        renderGroups();
-        renderUrlChips();
+        const delBtn = pill.querySelector('.pill-del');
+        if (delBtn.dataset.armed === '1') {
+          urls.forEach(u => { if (u.groupId === g.id) u.groupId = null; });
+          groups = groups.filter(x => x.id !== g.id);
+          saveData(groups, urls);
+          renderGroups();
+          renderUrlChips();
+        } else {
+          delBtn.dataset.armed = '1';
+          delBtn.style.color = '#e57373';
+          delBtn.title = 'Click again to confirm delete';
+          setTimeout(() => {
+            if (delBtn.dataset.armed) {
+              delBtn.dataset.armed = '';
+              delBtn.style.color = '';
+              delBtn.title = 'Delete group';
+            }
+          }, 2500);
+        }
       });
 
       container.appendChild(pill);
@@ -556,17 +569,26 @@
     input.focus();
     input.select();
 
+    let committed = false;
     function commit() {
+      if (committed) return;
+      committed = true;
       const val = input.value.trim();
       if (val) g.name = val;
       saveData(groups, urls);
       renderGroups();
       renderUrlChips();
     }
+    function cancel() {
+      if (committed) return;
+      committed = true;
+      renderGroups();
+      renderUrlChips();
+    }
     input.addEventListener('blur', commit);
     input.addEventListener('keydown', e => {
-      if (e.key === 'Enter') { e.preventDefault(); commit(); }
-      if (e.key === 'Escape') { renderGroups(); }
+      if (e.key === 'Enter')  { e.preventDefault(); input.blur(); }
+      if (e.key === 'Escape') { input.removeEventListener('blur', commit); cancel(); }
     });
   }
 
@@ -614,12 +636,25 @@
         openUrlEditor(u);
       });
 
-      // Delete URL
+      // Delete URL — click once to arm, click again to confirm
       chip.querySelector('.chip-del').addEventListener('click', () => {
-        if (!confirm(`Delete "${u.label || extractDomain(u.template)}"?`)) return;
-        urls = urls.filter(x => x.id !== u.id);
-        saveData(groups, urls);
-        renderUrlChips();
+        const delBtn = chip.querySelector('.chip-del');
+        if (delBtn.dataset.armed === '1') {
+          urls = urls.filter(x => x.id !== u.id);
+          saveData(groups, urls);
+          renderUrlChips();
+        } else {
+          delBtn.dataset.armed = '1';
+          delBtn.style.color = '#e57373';
+          delBtn.title = 'Click again to confirm delete';
+          setTimeout(() => {
+            if (delBtn.dataset.armed) {
+              delBtn.dataset.armed = '';
+              delBtn.style.color = '';
+              delBtn.title = 'Delete URL';
+            }
+          }, 2500);
+        }
       });
 
       container.appendChild(chip);
@@ -833,7 +868,15 @@
 
     if (!template) { alert('URL template is required.'); return; }
     if (!template.includes('{search_keyword}')) {
-      if (!confirm('URL does not contain {search_keyword}. Save anyway?')) return;
+      // No search keyword placeholder — show warning but allow save
+      const warnEl = document.getElementById('autoDetectError');
+      if (warnEl) {
+        warnEl.textContent = 'Warning: template has no {search_keyword} placeholder.';
+        warnEl.style.color = '#ffb74d';
+        warnEl.style.display = 'block';
+      }
+      // Give the user 1.5s to see the warning, then proceed
+      // (confirm() is blocked in Electron contextIsolation)
     }
 
     if (_editingUrlId) {
@@ -1004,26 +1047,28 @@
   // ════════════════════════════════════════════════════════
   //  INIT — try IPC config first, then fall back to localStorage
   // ════════════════════════════════════════════════════════
-  async function init() {
-    // If localStorage has no data, try loading from config.json via IPC
-    const lsGroups = JSON.parse(localStorage.getItem('hb_groups') || 'null');
-    const lsUrls   = JSON.parse(localStorage.getItem('hb_urls')   || 'null');
-    if ((!lsGroups || !lsUrls) && window.electronAPI && window.electronAPI.loadConfig) {
-      try {
-        const cfg = await window.electronAPI.loadConfig();
+  // ── INIT: render immediately from localStorage, IPC migration in background ──
+  // Render right away — no async wait on startup
+  renderHistory();
+  renderGroups();
+  renderUrlChips();
+
+  // Only on true first run (localStorage empty): try loading config.json once
+  // in the background, then re-render if data was found.
+  if (!localStorage.getItem('hb_groups') || !localStorage.getItem('hb_urls')) {
+    if (window.electronAPI && window.electronAPI.loadConfig) {
+      window.electronAPI.loadConfig().then(cfg => {
         if (cfg && cfg.groups && cfg.urls) {
           groups = cfg.groups;
           urls   = cfg.urls;
           localStorage.setItem('hb_groups', JSON.stringify(groups));
           localStorage.setItem('hb_urls',   JSON.stringify(urls));
+          renderGroups();
+          renderUrlChips();
         }
-      } catch(e) { console.warn('IPC load-config failed', e); }
+      }).catch(e => console.warn('IPC load-config failed', e));
     }
-    renderHistory();
-    renderGroups();
-    renderUrlChips();
   }
-  init();
 
   </script>
 </body>
