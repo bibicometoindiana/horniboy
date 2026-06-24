@@ -371,15 +371,9 @@
       <!-- Auto-detect section -->
       <div id="autoDetectSection" style="background:#1a1a1a;border:1px solid #3a3a3a;border-radius:6px;padding:10px;display:flex;flex-direction:column;gap:8px;">
         <div style="font-size:11px;color:#888;font-weight:bold;letter-spacing:0.05em;">AUTO-DETECT FROM REAL URL</div>
-        <div style="display:flex;gap:8px;">
-          <div style="flex:1;">
-            <label>Paste a real search result URL</label>
-            <input type="text" id="urlEditorRealUrl" placeholder="https://www.hornbach.de/s/bohrmaschine">
-          </div>
-          <div style="width:160px;">
-            <label>Search term you used</label>
-            <input type="text" id="urlEditorSearchTerm" placeholder="bohrmaschine">
-          </div>
+        <div>
+          <label>Paste a real search result URL</label>
+          <input type="text" id="urlEditorRealUrl" placeholder="https://www.hornbach.de/s/bohrmaschine">
         </div>
         <div id="autoDetectResult" style="display:none;">
           <label>Auto-generated template</label>
@@ -638,47 +632,142 @@
   let _editingUrlId = null;
 
   // ── Auto-detect: replace all occurrences of term (plain + encoded) ─────────
-  function buildAutoTemplate(realUrl, term) {
-    if (!realUrl || !term) return null;
-    term = term.trim();
-    if (!term) return null;
-    const encoded = encodeURIComponent(term);
-    const encodedPlus = term.replace(/ /g, '+');
-    // Try encoded first, then plus-encoded, then plain
-    let result = realUrl;
-    let found = false;
-    if (encoded !== term && result.includes(encoded)) {
-      result = result.split(encoded).join('{search_keyword}');
-      found = true;
+  /*
+   * detectSearchParam(rawUrl)
+   * Returns { template, reason } or null.
+   *
+   * Strategy (in priority order):
+   *  1. Known query-param names  (q, query, search, keyword, k, s, text,
+   *                               term, searchQuery, suche, zoekterm, …)
+   *  2. Any query param whose value looks like a search string
+   *     (2+ words, or contains URL-encoded spaces, no digits-only, not a UUID)
+   *  3. Path segment heuristics:
+   *     a. After known path indicators  (/search/, /s/, /suche/, /zoeken/,
+   *        /catalogsearch/result/q/, /find/, /results/, /query/)
+   *     b. Last non-numeric, non-UUID, non-file-extension path segment
+   *        that contains mostly word characters
+   */
+  function detectSearchParam(rawUrl) {
+    let url;
+    try { url = new URL(rawUrl); } catch { return null; }
+
+    const KNOWN_PARAMS = [
+      'q', 'query', 'search', 'keyword', 'keywords', 'k', 's', 'text',
+      'term', 'terms', 'searchQuery', 'search_query', 'search_term',
+      'suche', 'suchbegriff', 'zoekterm', 'zoeken', 'searchterm',
+      'qs', 'sq', 'w', 'p', 'find', 'input', 'str', 'string', 'words',
+    ];
+
+    // ── 1. Known param names (case-insensitive) ────────────────────────────
+    for (const key of KNOWN_PARAMS) {
+      for (const [k, v] of url.searchParams) {
+        if (k.toLowerCase() === key && v && v.trim()) {
+          const template = rawUrl.replace(
+            new RegExp(escapeRegex(encodeURIComponent(v)) + '|' +
+                       escapeRegex(v.replace(/ /g,'+'))   + '|' +
+                       escapeRegex(v), 'g'),
+            '{search_keyword}'
+          );
+          return { template, reason: 'query param "' + k + '"' };
+        }
+      }
     }
-    if (!found && encodedPlus !== term && result.includes(encodedPlus)) {
-      result = result.split(encodedPlus).join('{search_keyword}');
-      found = true;
+
+    // ── 2. Any param that looks like a free-text search ───────────────────
+    const SKIP_LOOKS = /^[\d]+$|^[0-9a-f-]{32,}$/i; // pure numbers or UUIDs
+    for (const [k, v] of url.searchParams) {
+      if (!v || !v.trim()) continue;
+      if (SKIP_LOOKS.test(v)) continue;
+      // Looks like a word or phrase (letters, possibly spaces/hyphens)
+      if (/[a-zA-ZÀ-ž]/.test(v) && v.length >= 2) {
+        const template = rawUrl.replace(
+          new RegExp(escapeRegex(encodeURIComponent(v)) + '|' +
+                     escapeRegex(v.replace(/ /g,'+'))   + '|' +
+                     escapeRegex(v), 'g'),
+          '{search_keyword}'
+        );
+        return { template, reason: 'query param "' + k + '" (auto-detected)' };
+      }
     }
-    if (!found && result.includes(term)) {
-      result = result.split(term).join('{search_keyword}');
-      found = true;
+
+    // ── 3a. Path segment after known search path prefixes ─────────────────
+    const PATH_PREFIXES = [
+      '/search/', '/s/', '/suche/', '/zoeken/', '/find/', '/results/',
+      '/result/', '/query/', '/catalogsearch/result/q/', '/buscar/',
+      '/recherche/', '/cerca/', '/szukaj/', '/sok/', '/sok-', '/hledat/',
+    ];
+    const pathname = url.pathname;
+    for (const prefix of PATH_PREFIXES) {
+      const idx = pathname.toLowerCase().indexOf(prefix);
+      if (idx !== -1) {
+        const after = pathname.slice(idx + prefix.length);
+        const segment = after.split('/')[0];
+        if (segment && isSearchySegment(segment)) {
+          const decoded = decodeURIComponent(segment);
+          const template = rawUrl.replace(
+            new RegExp(escapeRegex(encodeURIComponent(decoded)) + '|' +
+                       escapeRegex(segment.replace(/\+/g,'%20'))+ '|' +
+                       escapeRegex(segment), 'g'),
+            '{search_keyword}'
+          );
+          return { template, reason: 'path after "' + prefix.replace(/\//g,'') + '"' };
+        }
+      }
     }
-    return found ? result : null;
+
+    // ── 3b. Last meaningful path segment ─────────────────────────────────
+    const segments = pathname.split('/').filter(Boolean);
+    // Walk from end, skip numeric/UUID/file segments
+    for (let i = segments.length - 1; i >= 0; i--) {
+      const seg = segments[i];
+      const decoded = decodeURIComponent(seg);
+      if (isSearchySegment(seg) && /[a-zA-ZÀ-ž]/.test(decoded) && decoded.length >= 2) {
+        const template = rawUrl.replace(
+          new RegExp(escapeRegex(encodeURIComponent(decoded)) + '|' +
+                     escapeRegex(seg), 'g'),
+          '{search_keyword}'
+        );
+        return { template, reason: 'path segment "' + decoded + '"' };
+      }
+    }
+
+    return null;
+  }
+
+  function isSearchySegment(seg) {
+    const d = decodeURIComponent(seg);
+    if (/^[\d]+$/.test(d)) return false;              // pure number
+    if (/^[0-9a-f-]{32,}$/i.test(d)) return false;   // UUID-like
+    if (/\.\w{2,4}$/.test(d)) return false;           // file extension
+    if (d.length < 2) return false;
+    return true;
+  }
+
+  function escapeRegex(s) {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 
   function runAutoDetect() {
     const realUrl  = document.getElementById('urlEditorRealUrl').value.trim();
-    const term     = document.getElementById('urlEditorSearchTerm').value.trim();
     const resultEl = document.getElementById('autoDetectResult');
     const errorEl  = document.getElementById('autoDetectError');
     const srcRow   = document.getElementById('templateSourceRow');
     errorEl.style.display = 'none';
     resultEl.style.display = 'none';
-    if (!realUrl || !term) return;
-    const tmpl = buildAutoTemplate(realUrl, term);
-    if (tmpl) {
-      document.getElementById('urlEditorAutoTemplate').value = tmpl;
+    if (!realUrl) return;
+    const result = detectSearchParam(realUrl);
+    if (result) {
+      document.getElementById('urlEditorAutoTemplate').value = result.template;
+      // show which param/segment was detected as hint
+      errorEl.textContent = 'Detected: ' + result.reason;
+      errorEl.style.color = '#7fcc9a';
+      errorEl.style.display = 'block';
       resultEl.style.display = 'block';
       srcRow.style.display = 'flex';
       document.getElementById('srcAuto').checked = true;
     } else {
-      errorEl.textContent = 'Could not find "' + term + '" in the URL (tried plain, URL-encoded, plus-encoded).';
+      errorEl.textContent = 'Could not auto-detect the search position. Use the manual template field.';
+      errorEl.style.color = '#e57373';
       errorEl.style.display = 'block';
       srcRow.style.display = 'none';
     }
@@ -691,8 +780,7 @@
     document.getElementById('urlEditorTemplate').value = u ? u.template : '';
 
     // Reset auto-detect state
-    document.getElementById('urlEditorRealUrl').value    = '';
-    document.getElementById('urlEditorSearchTerm').value = '';
+    document.getElementById('urlEditorRealUrl').value = '';
     document.getElementById('autoDetectResult').style.display = 'none';
     document.getElementById('autoDetectError').style.display  = 'none';
     document.getElementById('templateSourceRow').style.display = 'none';
@@ -713,10 +801,8 @@
     document.getElementById('urlEditorLabel').focus();
   }
 
-  // Wire auto-detect inputs
-  ['urlEditorRealUrl', 'urlEditorSearchTerm'].forEach(id => {
-    document.getElementById(id).addEventListener('input', runAutoDetect);
-  });
+  // Wire auto-detect input
+  document.getElementById('urlEditorRealUrl').addEventListener('input', runAutoDetect);
 
   // "Use this ↑" copies auto-template to manual field and selects Manual
   document.getElementById('useAutoTemplateBtn').addEventListener('click', () => {
