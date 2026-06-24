@@ -1,0 +1,5 @@
+https://www.hornbach.de/s/{search_keyword}?f.dsall=im+Markt+vorrätig&isInitialRequest=false
+https://www.bauhaus.info/search?availability=561&page=1&q={search_keyword}
+https://www.sonderpreis-baumarkt.de/search?q={search_keyword}&search-button=&lang=de_DE
+https://www.obi.at/search/{search_keyword}?_availability=store
+https://www.obi.de/search/{search_keyword}?_availability=store
