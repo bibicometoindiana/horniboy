@@ -26,13 +26,29 @@ ipcMain.handle('load-config', async () => {
     if (fs.existsSync(CONFIG_PATH)) {
       return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
     }
-    // Fall back to legacy urls.txt
+    // Fall back to urls.txt (legacy plain templates OR new JSON-per-line)
     if (fs.existsSync(URLS_PATH)) {
       const lines = fs.readFileSync(URLS_PATH, 'utf-8')
         .split('\n')
         .map(l => l.trim())
-        .filter(l => l && l.includes('{search_keyword}'));
-      return { legacyUrls: lines };
+        .filter(Boolean);
+      
+      // Check if it's new JSON-per-line format (starts with '{')
+      const jsonUrls = lines.filter(l => l.startsWith('{')).map(l => {
+        try { return JSON.parse(l); } catch { return null; }
+      }).filter(Boolean);
+
+      if (jsonUrls.length > 0) {
+        // New format: has id, label, template, groupId, enabled
+        return {
+          groups: [],
+          urls: jsonUrls
+        };
+      }
+
+      // Old format: plain URL templates
+      const legacyUrls = lines.filter(l => l.includes('{search_keyword}'));
+      return { legacyUrls };
     }
   } catch (err) {
     console.error('Error loading config:', err);
@@ -44,9 +60,12 @@ ipcMain.handle('load-config', async () => {
 ipcMain.handle('save-config', async (event, config) => {
   try {
     fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2), 'utf-8');
-    // Also keep urls.txt in sync for backwards compatibility
+    // Keep urls.txt in sync preserving labels & groups (JSON per line)
     if (config.urls && Array.isArray(config.urls)) {
-      const lines = config.urls.map(u => u.template).filter(Boolean).join('\n');
+      const lines = config.urls.map(u => JSON.stringify({
+        id: u.id, label: u.label, template: u.template,
+        groupId: u.groupId, enabled: u.enabled
+      })).join('\n');
       fs.writeFileSync(URLS_PATH, lines, 'utf-8');
     }
     return { ok: true };

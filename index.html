@@ -421,7 +421,7 @@
     let urls   = JSON.parse(localStorage.getItem('hb_urls')   || 'null');
 
     if (!groups || !urls) {
-      // Migrate from old urls.txt format via electronAPI, or set defaults
+      // Return defaults WITHOUT saving yet — init code will persist via IPC
       groups = [
         { id: 'g1', name: 'Austria', active: true },
         { id: 'g2', name: 'Germany', active: true },
@@ -433,7 +433,6 @@
         { id: uid(), label: 'OBI AT',      template: 'https://www.obi.at/search/{search_keyword}?_availability=store', groupId: 'g1', enabled: true },
         { id: uid(), label: 'OBI DE',      template: 'https://www.obi.de/search/{search_keyword}?_availability=store', groupId: 'g2', enabled: true },
       ];
-      saveData(groups, urls);
     }
     return { groups, urls };
   }
@@ -947,7 +946,7 @@
   //  SEARCH
   // ════════════════════════════════════════════════════════
   function updateHistory(query) {
-    if (!searchHistory.includes(query)) {
+    if (!searchHistory.some(h => h.toLowerCase() === query.toLowerCase())) {
       searchHistory.unshift(query);
       if (searchHistory.length > 20) searchHistory.pop();
       localStorage.setItem('searchHistory', JSON.stringify(searchHistory));
@@ -1001,7 +1000,7 @@
         <button class="ctrl-btn" onclick="document.getElementById('webview-${index}').goBack()">◀</button>
         <button class="ctrl-btn" onclick="document.getElementById('webview-${index}').goForward()">▶</button>
         <button class="ctrl-btn" onclick="document.getElementById('webview-${index}').reload()">↺</button>
-        <button class="ctrl-btn" onclick="toggleWebview(${index})">Hide</button>
+        <button class="ctrl-btn" data-toggle="${index}" onclick="toggleWebview(${index})">Hide</button>
         <span id="loading-${index}" class="loading-indicator"></span>
       `;
       document.getElementById('controls').appendChild(ctrl);
@@ -1009,19 +1008,26 @@
       webview.addEventListener('did-start-loading', () => {
         const el = document.getElementById(`loading-${index}`);
         if (el) el.textContent = 'Loading…';
-        const btn = ctrl.querySelectorAll('.ctrl-btn')[3];
+        const btn = ctrl.querySelector(`[data-toggle="${index}"]`);
         if (btn) btn.textContent = 'Hide';
       });
       webview.addEventListener('did-stop-loading', () => {
         const el = document.getElementById(`loading-${index}`);
         if (el) el.textContent = '';
       });
+      webview.addEventListener('did-fail-load', (event) => {
+        const el = document.getElementById(`loading-${index}`);
+        if (el) el.textContent = `❌ Fehler: ${event.errorDescription}`;
+        el.style.color = '#e57373';
+        const btn = ctrl.querySelector(`[data-toggle="${index}"]`);
+        if (btn) btn.textContent = 'Error';
+      });
     });
   }
 
   function toggleWebview(index) {
     const wv = document.getElementById(`webview-${index}`);
-    const btn = document.querySelector(`#ctrl-${index} .ctrl-btn:nth-child(4)`);
+    const btn = document.querySelector(`[data-toggle="${index}"]`);
     if (!wv) return;
     const hidden = wv.classList.toggle('hidden');
     if (btn) btn.textContent = hidden ? 'Show' : 'Hide';
@@ -1053,21 +1059,48 @@
   renderGroups();
   renderUrlChips();
 
-  // Only on true first run (localStorage empty): try loading config.json once
+  // Only on true first run (localStorage empty): try loading config.json / urls.txt
   // in the background, then re-render if data was found.
   if (!localStorage.getItem('hb_groups') || !localStorage.getItem('hb_urls')) {
     if (window.electronAPI && window.electronAPI.loadConfig) {
       window.electronAPI.loadConfig().then(cfg => {
-        if (cfg && cfg.groups && cfg.urls) {
-          groups = cfg.groups;
-          urls   = cfg.urls;
-          localStorage.setItem('hb_groups', JSON.stringify(groups));
-          localStorage.setItem('hb_urls',   JSON.stringify(urls));
+        if (cfg) {
+          // Config.json (full format)
+          if (cfg.groups && cfg.urls) {
+            groups = cfg.groups;
+            urls   = cfg.urls;
+          }
+          // Legacy urls.txt fallback (templates only)
+          if (cfg.legacyUrls && Array.isArray(cfg.legacyUrls) && (!groups || groups.length === 0)) {
+            groups = [
+              { id: 'g1', name: 'Austria', active: true },
+              { id: 'g2', name: 'Germany', active: true },
+            ];
+            urls = cfg.legacyUrls.map(t => ({
+              id: uid(), label: extractLegacyLabel(t) || 'Site',
+              template: t, groupId: null, enabled: true
+            }));
+          }
+          saveData(groups, urls);
           renderGroups();
           renderUrlChips();
+        } else {
+          // No config found — persist defaults to localStorage
+          saveData(groups, urls);
         }
-      }).catch(e => console.warn('IPC load-config failed', e));
+      }).catch(e => {
+        console.warn('IPC load-config failed, using defaults', e);
+        saveData(groups, urls);
+      });
+    } else {
+      // No Electron API (browser dev mode) — just persist defaults
+      saveData(groups, urls);
     }
+  }
+
+  function extractLegacyLabel(template) {
+    try { return new URL(template).hostname.replace('www.', ''); }
+    catch { return null; }
   }
 
   </script>
