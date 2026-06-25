@@ -498,17 +498,70 @@
   }
 
   const DEFAULT_GROUPS = [
-    { id: 'g1', name: 'Austria', active: true },
-    { id: 'g2', name: 'Germany', active: true },
+    { id: 'g1', name: 'Baumarkt AT', active: true },
+    { id: 'g2', name: 'Baumarkt DE', active: true },
+    { id: 'g3', name: '3D Druck', active: true },
+    { id: 'g4', name: 'Online Marktplätze', active: true },
+    { id: 'g5', name: 'Elektronik', active: true },
+    { id: 'g6', name: 'Werkzeug', active: true },
   ];
 
   const DEFAULT_URLS = [
-    { id: uid(), label: 'Hornbach DE', template: 'https://www.hornbach.de/s/{search_keyword}?f.dsall=im+Markt+vorrätig&isInitialRequest=false', groupId: 'g2', enabled: true },
-    { id: uid(), label: 'Bauhaus',     template: 'https://www.bauhaus.info/search?availability=561&page=1&q={search_keyword}', groupId: 'g2', enabled: true },
-    { id: uid(), label: 'Sonderpreis', template: 'https://www.sonderpreis-baumarkt.de/search?q={search_keyword}&search-button=&lang=de_DE', groupId: 'g2', enabled: true },
+    // ── Baumarkt AT ──
     { id: uid(), label: 'OBI AT',      template: 'https://www.obi.at/search/{search_keyword}?_availability=store', groupId: 'g1', enabled: true },
+    { id: uid(), label: 'Bauhaus AT',  template: 'https://www.bauhaus.at/search?q={search_keyword}', groupId: 'g1', enabled: true },
+    { id: uid(), label: 'Lagerhaus',   template: 'https://www.lagerhaus.at/marktplatz/suche?q={search_keyword}', groupId: 'g1', enabled: true },
+
+    // ── Baumarkt DE ──
+    { id: uid(), label: 'Hornbach DE', template: 'https://www.hornbach.de/s/{search_keyword}?f.dsall=im+Markt+vorrätig&isInitialRequest=false', groupId: 'g2', enabled: true },
+    { id: uid(), label: 'Bauhaus DE',  template: 'https://www.bauhaus.info/search?availability=561&page=1&q={search_keyword}', groupId: 'g2', enabled: true },
     { id: uid(), label: 'OBI DE',      template: 'https://www.obi.de/search/{search_keyword}?_availability=store', groupId: 'g2', enabled: true },
+    { id: uid(), label: 'toom',        template: 'https://toom.de/suche?q={search_keyword}', groupId: 'g2', enabled: true },
+    { id: uid(), label: 'Hellweg',     template: 'https://www.hellweg.de/search?s={search_keyword}', groupId: 'g2', enabled: true },
+    { id: uid(), label: 'hagebau',     template: 'https://www.hagebau.de/search/?q={search_keyword}', groupId: 'g2', enabled: true },
+    { id: uid(), label: 'Sonderpreis', template: 'https://www.sonderpreis-baumarkt.de/search?q={search_keyword}&search-button=&lang=de_DE', groupId: 'g2', enabled: true },
+
+    // ── 3D Druck ──
+    { id: uid(), label: '3DJake',      template: 'https://www.3djake.de/search?q={search_keyword}', groupId: 'g3', enabled: true },
+    { id: uid(), label: 'Filamentwelt', template: 'https://www.filamentwelt.de/search?s={search_keyword}', groupId: 'g3', enabled: true },
+    { id: uid(), label: 'Prusa',        template: 'https://www.prusa3d.com/search/?q={search_keyword}', groupId: 'g3', enabled: true },
+    { id: uid(), label: 'Anycubic',     template: 'https://store.anycubic.com/search?q={search_keyword}', groupId: 'g3', enabled: true },
+
+    // ── Online Marktplätze ──
+    { id: uid(), label: 'Amazon DE',    template: 'https://www.amazon.de/s?k={search_keyword}', groupId: 'g4', enabled: true },
+    { id: uid(), label: 'eBay DE',      template: 'https://www.ebay.de/sch/i.html?_nkw={search_keyword}', groupId: 'g4', enabled: true },
+    { id: uid(), label: 'Willhaben',    template: 'https://www.willhaben.at/iad/kaufen-und-verkaufen/marktplatz?keyword={search_keyword}', groupId: 'g4', enabled: true },
+    { id: uid(), label: 'Geizhals',     template: 'https://geizhals.de/?fs={search_keyword}', groupId: 'g4', enabled: true },
+    { id: uid(), label: 'idealo',       template: 'https://www.idealo.de/preisvergleich/MainSearchProductCategory.html?q={search_keyword}', groupId: 'g4', enabled: true },
+
+    // ── Elektronik ──
+    { id: uid(), label: 'Conrad',       template: 'https://www.conrad.de/de/Search.html?search={search_keyword}', groupId: 'g5', enabled: true },
+    { id: uid(), label: 'Reichelt',     template: 'https://www.reichelt.de/index.html?ACTION=446&s={search_keyword}', groupId: 'g5', enabled: true },
+
+    // ── Werkzeug ──
+    { id: uid(), label: 'Contorion',    template: 'https://www.contorion.de/search?q={search_keyword}', groupId: 'g6', enabled: true },
   ];
+
+  // ════════════════════════════════════════════════════════
+  //  DATA VERSION — migrate old defaults to new categories
+  // ════════════════════════════════════════════════════════
+  const DATA_VERSION = 2;
+  const savedVersion = parseInt(localStorage.getItem('hb_version') || '0', 10);
+  if (savedVersion < DATA_VERSION) {
+    // Reset to new defaults if version is old
+    const oldGroups = JSON.parse(localStorage.getItem('hb_groups') || 'null');
+    if (oldGroups) {
+      // Check if old group names match the pre-update format
+      const isOld = oldGroups.some(g => g.name === 'Austria' || g.name === 'Germany');
+      if (isOld) {
+        localStorage.removeItem('hb_groups');
+        localStorage.removeItem('hb_urls');
+        localStorage.removeItem('hb_version');
+        console.log('Migrated to new categories (v' + DATA_VERSION + ')');
+      }
+    }
+    localStorage.setItem('hb_version', String(DATA_VERSION));
+  }
 
   // ════════════════════════════════════════════════════════
   //  STATE
