@@ -103,13 +103,15 @@
       gap: 4px;
       font-size: 12px;
       user-select: none;
+      will-change: opacity;
     }
     .group-pill.active {
       background: #2e5fa3;
       border-color: #4a80c4;
       color: #fff;
     }
-    .group-pill:hover { filter: brightness(1.2); }
+    .group-pill:hover { background: #3a3a3a; }
+    .group-pill.active:hover { background: #3a72bd; }
     .group-pill .pill-name {
       max-width: 120px;
       overflow: hidden;
@@ -300,7 +302,8 @@
       cursor: pointer;
     }
     .ctrl-btn:hover { background: #444; }
-    .loading-indicator { font-size: 11px; color: #4caf50; }
+    .ctrl-btn:disabled { opacity: 0.4; cursor: default; }
+    .ctrl-btn:disabled:hover { background: #333; }
 
     /* ── Webview container ─────────────────────────────────── */
     #views {
@@ -317,6 +320,31 @@
     }
     webview:last-child { border-right: none; }
     .hidden { display: none !important; }
+
+    /* ── Loading placeholder ───────────────────────────────── */
+    .wv-placeholder {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-width: 300px;
+      border-right: 1px solid #333;
+      background: #1a1a1a;
+      color: #555;
+      font-size: 12px;
+    }
+    .wv-placeholder:last-child { border-right: none; }
+    .wv-placeholder .spinner {
+      width: 24px;
+      height: 24px;
+      border: 2px solid #333;
+      border-top: 2px solid #4a80c4;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-bottom: 8px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
@@ -410,29 +438,21 @@
   <script>
   // ════════════════════════════════════════════════════════
   //  DATA MODEL
-  //  groups: [{ id, name, active }]
-  //  urls:   [{ id, label, template, groupId, enabled }]
   // ════════════════════════════════════════════════════════
 
-  const DEFAULT_GROUP_ALL = { id: 'all', name: 'All', active: true };
+  // ── Poor man's uid ─────────────────────────────────────
+  let _uidCounter = Date.now();
+  function uid() { return (++_uidCounter).toString(36); }
 
+  // ── Save/load with debounced IPC ──────────────────────
+  let _saveTimeout = null;
   function loadData() {
     let groups = JSON.parse(localStorage.getItem('hb_groups') || 'null');
     let urls   = JSON.parse(localStorage.getItem('hb_urls')   || 'null');
 
     if (!groups || !urls) {
-      // Return defaults WITHOUT saving yet — init code will persist via IPC
-      groups = [
-        { id: 'g1', name: 'Austria', active: true },
-        { id: 'g2', name: 'Germany', active: true },
-      ];
-      urls = [
-        { id: uid(), label: 'Hornbach DE', template: 'https://www.hornbach.de/s/{search_keyword}?f.dsall=im+Markt+vorrätig&isInitialRequest=false', groupId: 'g2', enabled: true },
-        { id: uid(), label: 'Bauhaus',     template: 'https://www.bauhaus.info/search?availability=561&page=1&q={search_keyword}', groupId: 'g2', enabled: true },
-        { id: uid(), label: 'Sonderpreis', template: 'https://www.sonderpreis-baumarkt.de/search?q={search_keyword}&search-button=&lang=de_DE', groupId: 'g2', enabled: true },
-        { id: uid(), label: 'OBI AT',      template: 'https://www.obi.at/search/{search_keyword}?_availability=store', groupId: 'g1', enabled: true },
-        { id: uid(), label: 'OBI DE',      template: 'https://www.obi.de/search/{search_keyword}?_availability=store', groupId: 'g2', enabled: true },
-      ];
+      groups = DEFAULT_GROUPS;
+      urls   = DEFAULT_URLS;
     }
     return { groups, urls };
   }
@@ -440,15 +460,27 @@
   function saveData(groups, urls) {
     localStorage.setItem('hb_groups', JSON.stringify(groups));
     localStorage.setItem('hb_urls',   JSON.stringify(urls));
-    // Also persist to urls.txt via IPC so it's not lost across installs
-    if (window.electronAPI && window.electronAPI.saveConfig) {
-      window.electronAPI.saveConfig({ groups, urls });
-    }
+    // Debounce IPC — don't hammer disk on rapid toggles
+    if (_saveTimeout) clearTimeout(_saveTimeout);
+    _saveTimeout = setTimeout(() => {
+      if (window.electronAPI && window.electronAPI.saveConfig) {
+        window.electronAPI.saveConfig({ groups, urls });
+      }
+    }, 500);
   }
 
-  function uid() {
-    return Math.random().toString(36).slice(2, 10);
-  }
+  const DEFAULT_GROUPS = [
+    { id: 'g1', name: 'Austria', active: true },
+    { id: 'g2', name: 'Germany', active: true },
+  ];
+
+  const DEFAULT_URLS = [
+    { id: uid(), label: 'Hornbach DE', template: 'https://www.hornbach.de/s/{search_keyword}?f.dsall=im+Markt+vorrätig&isInitialRequest=false', groupId: 'g2', enabled: true },
+    { id: uid(), label: 'Bauhaus',     template: 'https://www.bauhaus.info/search?availability=561&page=1&q={search_keyword}', groupId: 'g2', enabled: true },
+    { id: uid(), label: 'Sonderpreis', template: 'https://www.sonderpreis-baumarkt.de/search?q={search_keyword}&search-button=&lang=de_DE', groupId: 'g2', enabled: true },
+    { id: uid(), label: 'OBI AT',      template: 'https://www.obi.at/search/{search_keyword}?_availability=store', groupId: 'g1', enabled: true },
+    { id: uid(), label: 'OBI DE',      template: 'https://www.obi.de/search/{search_keyword}?_availability=store', groupId: 'g2', enabled: true },
+  ];
 
   // ════════════════════════════════════════════════════════
   //  STATE
@@ -460,53 +492,52 @@
   // ════════════════════════════════════════════════════════
   //  COMPUTED HELPERS
   // ════════════════════════════════════════════════════════
-
-  /** IDs of currently active groups */
   function activeGroupIds() {
     return groups.filter(g => g.active).map(g => g.id);
   }
 
-  /**
-   * Returns the effective set of URLs to load:
-   * enabled AND (group is active OR no groups active → show all)
-   */
   function effectiveUrls() {
     const ag = activeGroupIds();
     return urls.filter(u => {
       if (!u.enabled) return false;
-      if (ag.length === 0) return true; // all groups off → show all enabled
+      if (ag.length === 0) return true;
       return ag.includes(u.groupId) || !u.groupId;
     });
   }
 
   // ════════════════════════════════════════════════════════
-  //  RENDER — HISTORY
+  //  RENDER — HISTORY (uses DocumentFragment)
   // ════════════════════════════════════════════════════════
   function renderHistory() {
     const div = document.getElementById('history');
     div.innerHTML = '';
     if (searchHistory.length === 0) return;
+
+    const frag = document.createDocumentFragment();
     const lbl = document.createElement('span');
     lbl.className = 'hist-label';
     lbl.textContent = 'History:';
-    div.appendChild(lbl);
+    frag.appendChild(lbl);
+
     searchHistory.forEach(term => {
       const b = document.createElement('span');
       b.className = 'hist-btn';
       b.textContent = term;
       b.onclick = () => { document.getElementById('searchInput').value = term; performSearch(); };
-      div.appendChild(b);
+      frag.appendChild(b);
     });
+    div.appendChild(frag);
   }
 
   // ════════════════════════════════════════════════════════
-  //  RENDER — GROUPS RIBBON
+  //  RENDER — GROUPS (DocumentFragment, avoids layout thrash)
   // ════════════════════════════════════════════════════════
   function renderGroups() {
     const container = document.getElementById('group-pills');
     container.innerHTML = '';
     updateSelectAllBtn();
 
+    const frag = document.createDocumentFragment();
     groups.forEach(g => {
       const pill = document.createElement('div');
       pill.className = 'group-pill' + (g.active ? ' active' : '');
@@ -517,7 +548,6 @@
         <span class="pill-del" title="Delete group">✕</span>
       `;
 
-      // Toggle active
       pill.querySelector('.pill-name').addEventListener('click', () => {
         g.active = !g.active;
         saveData(groups, urls);
@@ -525,13 +555,11 @@
         renderUrlChips();
       });
 
-      // Rename
       pill.querySelector('.pill-edit').addEventListener('click', (e) => {
         e.stopPropagation();
         startGroupRename(pill, g);
       });
 
-      // Delete group — click once to arm (turns red), click again to confirm
       pill.querySelector('.pill-del').addEventListener('click', (e) => {
         e.stopPropagation();
         const delBtn = pill.querySelector('.pill-del');
@@ -555,8 +583,9 @@
         }
       });
 
-      container.appendChild(pill);
+      frag.appendChild(pill);
     });
+    container.appendChild(frag);
   }
 
   function startGroupRename(pillEl, g) {
@@ -592,13 +621,14 @@
   }
 
   // ════════════════════════════════════════════════════════
-  //  RENDER — URL CHIPS
+  //  RENDER — URL CHIPS (DocumentFragment)
   // ════════════════════════════════════════════════════════
   function renderUrlChips() {
     const ag = activeGroupIds();
     const container = document.getElementById('url-chips');
     container.innerHTML = '';
 
+    const frag = document.createDocumentFragment();
     urls.forEach(u => {
       const inActiveGroup = ag.length === 0 || ag.includes(u.groupId) || !u.groupId;
       const isEffective = u.enabled && inActiveGroup;
@@ -618,24 +648,20 @@
         <span class="chip-del" title="Delete URL">✕</span>
       `;
 
-      // Toggle enabled
       chip.querySelector('.chip-toggle').addEventListener('click', () => {
         u.enabled = !u.enabled;
         saveData(groups, urls);
         renderUrlChips();
       });
 
-      // Edit URL
       chip.querySelector('.chip-edit').addEventListener('click', () => {
         openUrlEditor(u);
       });
 
-      // Click name → open editor too
       chip.querySelector('.chip-name').addEventListener('click', () => {
         openUrlEditor(u);
       });
 
-      // Delete URL — click once to arm, click again to confirm
       chip.querySelector('.chip-del').addEventListener('click', () => {
         const delBtn = chip.querySelector('.chip-del');
         if (delBtn.dataset.armed === '1') {
@@ -656,31 +682,16 @@
         }
       });
 
-      container.appendChild(chip);
+      frag.appendChild(chip);
     });
+    container.appendChild(frag);
   }
 
   // ════════════════════════════════════════════════════════
-  //  URL EDITOR MODAL
+  //  URL EDITOR MODAL (unchanged logic)
   // ════════════════════════════════════════════════════════
   let _editingUrlId = null;
 
-  // ── Auto-detect: replace all occurrences of term (plain + encoded) ─────────
-  /*
-   * detectSearchParam(rawUrl)
-   * Returns { template, reason } or null.
-   *
-   * Strategy (in priority order):
-   *  1. Known query-param names  (q, query, search, keyword, k, s, text,
-   *                               term, searchQuery, suche, zoekterm, …)
-   *  2. Any query param whose value looks like a search string
-   *     (2+ words, or contains URL-encoded spaces, no digits-only, not a UUID)
-   *  3. Path segment heuristics:
-   *     a. After known path indicators  (/search/, /s/, /suche/, /zoeken/,
-   *        /catalogsearch/result/q/, /find/, /results/, /query/)
-   *     b. Last non-numeric, non-UUID, non-file-extension path segment
-   *        that contains mostly word characters
-   */
   function detectSearchParam(rawUrl) {
     let url;
     try { url = new URL(rawUrl); } catch { return null; }
@@ -692,7 +703,6 @@
       'qs', 'sq', 'w', 'p', 'find', 'input', 'str', 'string', 'words',
     ];
 
-    // ── 1. Known param names (case-insensitive) ────────────────────────────
     for (const key of KNOWN_PARAMS) {
       for (const [k, v] of url.searchParams) {
         if (k.toLowerCase() === key && v && v.trim()) {
@@ -707,12 +717,10 @@
       }
     }
 
-    // ── 2. Any param that looks like a free-text search ───────────────────
-    const SKIP_LOOKS = /^[\d]+$|^[0-9a-f-]{32,}$/i; // pure numbers or UUIDs
+    const SKIP_LOOKS = /^[\d]+$|^[0-9a-f-]{32,}$/i;
     for (const [k, v] of url.searchParams) {
       if (!v || !v.trim()) continue;
       if (SKIP_LOOKS.test(v)) continue;
-      // Looks like a word or phrase (letters, possibly spaces/hyphens)
       if (/[a-zA-ZÀ-ž]/.test(v) && v.length >= 2) {
         const template = rawUrl.replace(
           new RegExp(escapeRegex(encodeURIComponent(v)) + '|' +
@@ -724,7 +732,6 @@
       }
     }
 
-    // ── 3a. Path segment after known search path prefixes ─────────────────
     const PATH_PREFIXES = [
       '/search/', '/s/', '/suche/', '/zoeken/', '/find/', '/results/',
       '/result/', '/query/', '/catalogsearch/result/q/', '/buscar/',
@@ -749,9 +756,7 @@
       }
     }
 
-    // ── 3b. Last meaningful path segment ─────────────────────────────────
     const segments = pathname.split('/').filter(Boolean);
-    // Walk from end, skip numeric/UUID/file segments
     for (let i = segments.length - 1; i >= 0; i--) {
       const seg = segments[i];
       const decoded = decodeURIComponent(seg);
@@ -770,9 +775,9 @@
 
   function isSearchySegment(seg) {
     const d = decodeURIComponent(seg);
-    if (/^[\d]+$/.test(d)) return false;              // pure number
-    if (/^[0-9a-f-]{32,}$/i.test(d)) return false;   // UUID-like
-    if (/\.\w{2,4}$/.test(d)) return false;           // file extension
+    if (/^[\d]+$/.test(d)) return false;
+    if (/^[0-9a-f-]{32,}$/i.test(d)) return false;
+    if (/\.\w{2,4}$/.test(d)) return false;
     if (d.length < 2) return false;
     return true;
   }
@@ -792,7 +797,6 @@
     const result = detectSearchParam(realUrl);
     if (result) {
       document.getElementById('urlEditorAutoTemplate').value = result.template;
-      // show which param/segment was detected as hint
       errorEl.textContent = 'Detected: ' + result.reason;
       errorEl.style.color = '#7fcc9a';
       errorEl.style.display = 'block';
@@ -813,14 +817,12 @@
     document.getElementById('urlEditorLabel').value    = u ? u.label    : '';
     document.getElementById('urlEditorTemplate').value = u ? u.template : '';
 
-    // Reset auto-detect state
     document.getElementById('urlEditorRealUrl').value = '';
     document.getElementById('autoDetectResult').style.display = 'none';
     document.getElementById('autoDetectError').style.display  = 'none';
     document.getElementById('templateSourceRow').style.display = 'none';
     document.getElementById('srcManual').checked = true;
 
-    // Populate group dropdown
     const sel = document.getElementById('urlEditorGroup');
     sel.innerHTML = '<option value="">— no group —</option>';
     groups.forEach(g => {
@@ -835,10 +837,7 @@
     document.getElementById('urlEditorLabel').focus();
   }
 
-  // Wire auto-detect input
   document.getElementById('urlEditorRealUrl').addEventListener('input', runAutoDetect);
-
-  // "Use this ↑" copies auto-template to manual field and selects Manual
   document.getElementById('useAutoTemplateBtn').addEventListener('click', () => {
     const tmpl = document.getElementById('urlEditorAutoTemplate').value;
     document.getElementById('urlEditorTemplate').value = tmpl;
@@ -859,7 +858,6 @@
     const label   = document.getElementById('urlEditorLabel').value.trim();
     const groupId = document.getElementById('urlEditorGroup').value || null;
 
-    // Determine which template to use
     const useAuto = document.getElementById('srcAuto') && document.getElementById('srcAuto').checked;
     const manualTmpl = document.getElementById('urlEditorTemplate').value.trim();
     const autoTmpl   = document.getElementById('urlEditorAutoTemplate').value.trim();
@@ -867,15 +865,12 @@
 
     if (!template) { alert('URL template is required.'); return; }
     if (!template.includes('{search_keyword}')) {
-      // No search keyword placeholder — show warning but allow save
       const warnEl = document.getElementById('autoDetectError');
       if (warnEl) {
         warnEl.textContent = 'Warning: template has no {search_keyword} placeholder.';
         warnEl.style.color = '#ffb74d';
         warnEl.style.display = 'block';
       }
-      // Give the user 1.5s to see the warning, then proceed
-      // (confirm() is blocked in Electron contextIsolation)
     }
 
     if (_editingUrlId) {
@@ -894,9 +889,7 @@
   //  ADD BUTTONS
   // ════════════════════════════════════════════════════════
   document.getElementById('addGroupBtn').addEventListener('click', () => {
-    // prompt() is disabled in Electron contextIsolation; use inline input instead
     const container = document.getElementById('group-pills');
-    // Avoid duplicate inputs
     if (container.querySelector('.group-pill-edit-input')) return;
     const input = document.createElement('input');
     input.className = 'group-pill-edit-input';
@@ -925,7 +918,6 @@
     openUrlEditor(null);
   });
 
-  // ── Select All / Deselect All groups ──────────────────────────────────────
   function updateSelectAllBtn() {
     const btn = document.getElementById('selectAllGroupsBtn');
     if (!btn) return;
@@ -943,7 +935,7 @@
   });
 
   // ════════════════════════════════════════════════════════
-  //  SEARCH
+  //  SEARCH — OPTIMIZED: staggered webview loading
   // ════════════════════════════════════════════════════════
   function updateHistory(query) {
     if (!searchHistory.some(h => h.toLowerCase() === query.toLowerCase())) {
@@ -968,6 +960,15 @@
     return (str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
+  /** Create a placeholder div with spinner for a loading webview slot */
+  function createPlaceholder(index, siteName) {
+    const ph = document.createElement('div');
+    ph.className = 'wv-placeholder';
+    ph.id = `ph-${index}`;
+    ph.innerHTML = `<div class="spinner"></div><div>${escHtml(siteName)}</div>`;
+    return ph;
+  }
+
   function performSearch() {
     const query = document.getElementById('searchInput').value.trim();
     if (!query) return;
@@ -981,48 +982,97 @@
       return;
     }
 
+    const viewsEl = document.getElementById('views');
+
+    // Track loaded webview count for "all done" indicator
+    let loadedCount = 0;
+    const totalCount = active.length;
+
+    // ── Staggered webview loading ───────────────────────────
+    // Place all placeholders immediately so layout is stable,
+    // then spawn real webviews one at a time (300ms apart) to
+    // avoid hammering the CPU/network with 5+ simultaneous loads.
     active.forEach((u, index) => {
-      const finalUrl = u.template.replace('{search_keyword}', encodeURIComponent(query));
       const siteName = u.label || extractDomain(u.template);
 
-      const webview = document.createElement('webview');
-      webview.src = finalUrl;
-      webview.setAttribute('allowpopups', '');
-      webview.id = `webview-${index}`;
-      document.getElementById('views').appendChild(webview);
-      webviews.push(webview);
+      // 1. Create placeholder
+      const ph = createPlaceholder(index, siteName);
+      viewsEl.appendChild(ph);
 
+      // 2. Create control (disabled until webview is ready)
       const ctrl = document.createElement('div');
       ctrl.className = 'ctrl-group';
       ctrl.id = `ctrl-${index}`;
       ctrl.innerHTML = `
         <strong>${escHtml(siteName)}</strong>
-        <button class="ctrl-btn" onclick="document.getElementById('webview-${index}').goBack()">◀</button>
-        <button class="ctrl-btn" onclick="document.getElementById('webview-${index}').goForward()">▶</button>
-        <button class="ctrl-btn" onclick="document.getElementById('webview-${index}').reload()">↺</button>
-        <button class="ctrl-btn" data-toggle="${index}" onclick="toggleWebview(${index})">Hide</button>
-        <span id="loading-${index}" class="loading-indicator"></span>
+        <button class="ctrl-btn" id="cb-${index}-back" disabled>◀</button>
+        <button class="ctrl-btn" id="cb-${index}-fwd" disabled>▶</button>
+        <button class="ctrl-btn" id="cb-${index}-reload" disabled>↺</button>
+        <button class="ctrl-btn" data-toggle="${index}" disabled>Hide</button>
+        <span id="loading-${index}" class="loading-indicator">⏳ queued</span>
       `;
       document.getElementById('controls').appendChild(ctrl);
-
-      webview.addEventListener('did-start-loading', () => {
-        const el = document.getElementById(`loading-${index}`);
-        if (el) el.textContent = 'Loading…';
-        const btn = ctrl.querySelector(`[data-toggle="${index}"]`);
-        if (btn) btn.textContent = 'Hide';
-      });
-      webview.addEventListener('did-stop-loading', () => {
-        const el = document.getElementById(`loading-${index}`);
-        if (el) el.textContent = '';
-      });
-      webview.addEventListener('did-fail-load', (event) => {
-        const el = document.getElementById(`loading-${index}`);
-        if (el) el.textContent = `❌ Fehler: ${event.errorDescription}`;
-        el.style.color = '#e57373';
-        const btn = ctrl.querySelector(`[data-toggle="${index}"]`);
-        if (btn) btn.textContent = 'Error';
-      });
     });
+
+    // 3. Spawn webviews one at a time, staggered
+    function spawnWebview(index) {
+      if (index >= active.length) return;
+
+      const u = active[index];
+      const finalUrl = u.template.replace('{search_keyword}', encodeURIComponent(query));
+      const siteName = u.label || extractDomain(u.template);
+
+      // Replace placeholder with real webview
+      const ph = document.getElementById(`ph-${index}`);
+      if (!ph) { spawnWebview(index + 1); return; }
+
+      const wv = document.createElement('webview');
+      wv.src = finalUrl;
+      wv.setAttribute('allowpopups', '');
+      wv.id = `webview-${index}`;
+
+      // Swap placeholder → webview in one DOM operation
+      ph.parentNode.replaceChild(wv, ph);
+      webviews.push(wv);
+
+      // Update loading indicator
+      const loadingEl = document.getElementById(`loading-${index}`);
+      if (loadingEl) loadingEl.textContent = 'Loading…';
+
+      // Enable controls on load
+      wv.addEventListener('did-stop-loading', () => {
+        if (loadingEl) loadingEl.textContent = '';
+        // Enable controls once loaded
+        document.getElementById(`cb-${index}-back`)?.removeAttribute('disabled');
+        document.getElementById(`cb-${index}-fwd`)?.removeAttribute('disabled');
+        document.getElementById(`cb-${index}-reload`)?.removeAttribute('disabled');
+        const toggleBtn = document.querySelector(`[data-toggle="${index}"]`);
+        if (toggleBtn) { toggleBtn.removeAttribute('disabled'); toggleBtn.textContent = 'Hide'; }
+
+        loadedCount++;
+        if (loadedCount === totalCount && loadingEl) {
+          // All done — subtle signal
+        }
+      });
+
+      wv.addEventListener('did-fail-load', (event) => {
+        if (loadingEl) {
+          loadingEl.textContent = event.errorDescription.includes('ERR_ABORTED') ? '⚠️ stopped' : `❌ ${event.errorDescription}`;
+          loadingEl.style.color = '#e57373';
+        }
+        const toggleBtn = document.querySelector(`[data-toggle="${index}"]`);
+        if (toggleBtn) { toggleBtn.removeAttribute('disabled'); toggleBtn.textContent = 'Error'; }
+
+        loadedCount++;
+      });
+
+      // Schedule next webview with stagger delay
+      setTimeout(() => spawnWebview(index + 1), 300);
+    }
+
+    // Kick off staggered loading after a small initial delay
+    // so the UI has time to paint placeholders
+    setTimeout(() => spawnWebview(0), 50);
   }
 
   function toggleWebview(index) {
@@ -1051,26 +1101,20 @@
   });
 
   // ════════════════════════════════════════════════════════
-  //  INIT — try IPC config first, then fall back to localStorage
+  //  INIT
   // ════════════════════════════════════════════════════════
-  // ── INIT: render immediately from localStorage, IPC migration in background ──
-  // Render right away — no async wait on startup
   renderHistory();
   renderGroups();
   renderUrlChips();
 
-  // Only on true first run (localStorage empty): try loading config.json / urls.txt
-  // in the background, then re-render if data was found.
   if (!localStorage.getItem('hb_groups') || !localStorage.getItem('hb_urls')) {
     if (window.electronAPI && window.electronAPI.loadConfig) {
       window.electronAPI.loadConfig().then(cfg => {
         if (cfg) {
-          // Config.json (full format)
           if (cfg.groups && cfg.urls) {
             groups = cfg.groups;
             urls   = cfg.urls;
           }
-          // Legacy urls.txt fallback (templates only)
           if (cfg.legacyUrls && Array.isArray(cfg.legacyUrls) && (!groups || groups.length === 0)) {
             groups = [
               { id: 'g1', name: 'Austria', active: true },
@@ -1085,7 +1129,6 @@
           renderGroups();
           renderUrlChips();
         } else {
-          // No config found — persist defaults to localStorage
           saveData(groups, urls);
         }
       }).catch(e => {
@@ -1093,7 +1136,6 @@
         saveData(groups, urls);
       });
     } else {
-      // No Electron API (browser dev mode) — just persist defaults
       saveData(groups, urls);
     }
   }
