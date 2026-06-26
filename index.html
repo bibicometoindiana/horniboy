@@ -340,6 +340,28 @@
       margin-bottom: 8px;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Price bar ──────────────────────────────────────── */
+    #price-bar.visible { display: flex !important; }
+    .pb-header { display:flex;align-items:center;justify-content:space-between;padding:6px 8px;background:#232323;border-bottom:1px solid #3a3a3a;position:sticky;top:0;z-index:1; }
+    .pb-title { font-weight:bold;font-size:13px; }
+    .pb-actions { display:flex;gap:4px; }
+    .pb-actions button { padding:2px 8px;font-size:11px;border:1px solid #3a3a3a;border-radius:3px;background:#2a2a2a;color:#e0e0e0;cursor:pointer; }
+    .pb-actions button:hover { background:#3a3a3a; }
+    .pb-row { display:flex;align-items:center;gap:8px;padding:4px 8px;border-bottom:1px solid #3a3a3a;font-size:12px; }
+    .pb-row:last-child { border-bottom:none; }
+    .pb-store { min-width:100px;font-weight:bold;color:#e0e0e0; }
+    .pb-name { flex:1;color:#aaa;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+    .pb-price { font-weight:bold;color:#4caf50;white-space:nowrap; }
+
+    /* ── Table view ─────────────────────────────────────── */
+    #table-view table { width:100%;border-collapse:collapse;font-size:13px; }
+    #table-view th { background:#232323;padding:6px 10px;text-align:left;border-bottom:2px solid #3a3a3a;position:sticky;top:0;z-index:1;color:#e0e0e0; }
+    #table-view td { padding:5px 10px;border-bottom:1px solid #3a3a3a; }
+    .tv-store { font-weight:bold;min-width:100px;color:#e0e0e0; }
+    .tv-name { color:#aaa; }
+    .tv-price { font-weight:bold;color:#4caf50;white-space:nowrap; }
+    .tv-change { min-width:80px; }
   </style>
 </head>
 <body>
@@ -697,6 +719,103 @@
   let scrapedProducts = [];
   let viewMode = 'webview'; // 'webview' or 'table'
 
+  // ── Price history (Feature 1: Preis-Alarm) ──────────────
+  const PRICE_HISTORY_KEY = 'hb_price_history';
+  let priceHistory = JSON.parse(localStorage.getItem(PRICE_HISTORY_KEY) || '{}');
+
+  function extractNumericPrice(text) {
+    if (!text) return NaN;
+    // Entfernt Währungssymbole, normalisiert Dezimaltrenner
+    let s = text.replace(/[€$£¥]/g, '').replace(/,/g, '.').replace(/\s/g, '').trim();
+    const m = s.match(/(\d+\.?\d*)/);
+    return m ? parseFloat(m[1]) : NaN;
+  }
+
+  function savePriceHistory(searchTerm, products) {
+    if (!searchTerm || products.length === 0) return;
+    // Preis-Daten für jeden Shop speichern
+    const bySite = {};
+    products.forEach(p => {
+      if (!bySite[p.site]) bySite[p.site] = [];
+      bySite[p.site].push(p);
+    });
+    // Kleinster Preis pro Shop
+    const prices = {};
+    Object.entries(bySite).forEach(([site, prods]) => {
+      const nums = prods.map(p => extractNumericPrice(p.price)).filter(n => !isNaN(n));
+      if (nums.length > 0) {
+        const min = Math.min(...nums);
+        const minProd = prods.find(p => extractNumericPrice(p.price) === min);
+        prices[site] = {
+          price: minProd.price,
+          numeric: min,
+          name: minProd.name
+        };
+      }
+    });
+    priceHistory[searchTerm.toLowerCase()] = {
+      timestamp: new Date().toISOString(),
+      prices
+    };
+    // Max 30 Einträge, alte löschen
+    const keys = Object.keys(priceHistory);
+    if (keys.length > 30) {
+      const sorted = keys.sort((a, b) =>
+        (priceHistory[b].timestamp || '').localeCompare(priceHistory[a].timestamp || '')
+      );
+      sorted.slice(30).forEach(k => delete priceHistory[k]);
+    }
+    localStorage.setItem(PRICE_HISTORY_KEY, JSON.stringify(priceHistory));
+  }
+
+  function getPriceChange(siteName, currentPrice, searchTerm) {
+    if (!searchTerm || !currentPrice) return null;
+    const curNum = extractNumericPrice(currentPrice);
+    if (isNaN(curNum)) return null;
+    const history = priceHistory[searchTerm.toLowerCase()];
+    if (!history || !history.prices || !history.prices[siteName]) return null;
+    const prevNum = history.prices[siteName].numeric;
+    if (isNaN(prevNum)) return null;
+    const diff = curNum - prevNum;
+    if (Math.abs(diff) < 0.01) return { symbol: '=' , diff: 0, html: '<span style="color:var(--text-muted);font-size:11px;"> =</span>' };
+    if (diff < 0) return { symbol: '▼', diff, html: `<span style="color:#4caf50;font-size:11px;"> ▼ ${Math.abs(diff).toFixed(2)}</span>` };
+    return { symbol: '▲', diff, html: `<span style="color:#e57373;font-size:11px;"> ▲ ${diff.toFixed(2)}</span>` };
+  }
+
+  // ── Price badges on webview tabs (Feature 6) ────────────
+  function renderPriceBadges() {
+    const bySite = {};
+    scrapedProducts.forEach(p => {
+      if (!bySite[p.site]) bySite[p.site] = [];
+      bySite[p.site].push(p);
+    });
+    // Finde die günstigsten Preise pro Site
+    Object.entries(bySite).forEach(([site, prods]) => {
+      const nums = prods.map(p => extractNumericPrice(p.price)).filter(n => !isNaN(n));
+      if (nums.length === 0) return;
+      const min = Math.min(...nums);
+      const minProd = prods.find(p => extractNumericPrice(p.price) === min);
+      // Finde das passende ctrl-group Element
+      const allCtrls = document.querySelectorAll('.ctrl-group');
+      for (const ctrl of allCtrls) {
+        const strong = ctrl.querySelector('strong');
+        if (strong && strong.textContent.trim() === site) {
+          // Entferne altes Badge falls vorhanden
+          const oldBadge = ctrl.querySelector('.price-badge');
+          if (oldBadge) oldBadge.remove();
+          const badge = document.createElement('span');
+          badge.className = 'price-badge';
+          const currentSearch = document.getElementById('searchInput').value.trim();
+          const change = getPriceChange(site, minProd.price, currentSearch);
+          badge.innerHTML = change ? change.html : '';
+          badge.style.cssText = 'margin-left:6px;font-weight:bold;font-size:12px;';
+          strong.after(badge);
+          break;
+        }
+      }
+    });
+  }
+
   // Per-site price extractors
   const PRICE_SELECTORS = [
     // Common selectors (tried first)
@@ -807,7 +926,12 @@
       }
     }
     
+    // Save price history (Feature 1)
+    const searchTerm = document.getElementById('searchInput').value.trim();
+    savePriceHistory(searchTerm, scrapedProducts);
+
     renderPriceBar();
+    renderPriceBadges(); // Feature 6: Badges auf Tabs
     if (viewMode === 'table') renderTableView();
   }
 
@@ -834,7 +958,10 @@
     Object.entries(bySite).forEach(([site, products]) => {
       products.forEach(p => {
         const priceClass = p.price.includes('⚠️') ? '' : 'pb-price';
-        html += `<div class="pb-row"><span class="pb-store">${escHtml(site)}</span><span class="pb-name">${escHtml(p.name)}</span><span class="${priceClass}">${escHtml(p.price)}</span></div>`;
+        const searchTerm = document.getElementById('searchInput').value.trim();
+        const change = getPriceChange(site, p.price, searchTerm);
+        const changeHtml = change ? change.html : '';
+        html += `<div class="pb-row"><span class="pb-store">${escHtml(site)}</span><span class="pb-name">${escHtml(p.name)}</span><span class="${priceClass}">${escHtml(p.price)}${changeHtml}</span></div>`;
       });
     });
     
@@ -846,10 +973,13 @@
     const tv = document.getElementById('table-view');
     if (!tv) return;
     
-    let html = '<table><thead><tr><th>Store</th><th>Product</th><th>Price</th></tr></thead><tbody>';
+    let html = '<table><thead><tr><th>Store</th><th>Product</th><th>Price</th><th>Change</th></tr></thead><tbody>';
     scrapedProducts.forEach(p => {
       const priceDisplay = p.price.includes('⚠️') ? `<span style="color:var(--text-muted)">${escHtml(p.price)}</span>` : escHtml(p.price);
-      html += `<tr><td class="tv-store">${escHtml(p.site)}</td><td class="tv-name">${escHtml(p.name)}</td><td class="tv-price">${priceDisplay}</td></tr>`;
+      const searchTerm = document.getElementById('searchInput').value.trim();
+      const change = getPriceChange(p.site, p.price, searchTerm);
+      const changeHtml = change ? change.html : '<span style="color:var(--text-muted);font-size:11px;">—</span>';
+      html += `<tr><td class="tv-store">${escHtml(p.site)}</td><td class="tv-name">${escHtml(p.name)}</td><td class="tv-price">${priceDisplay}</td><td class="tv-change">${changeHtml}</td></tr>`;
     });
     html += '</tbody></table>';
     
