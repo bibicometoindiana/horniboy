@@ -526,6 +526,11 @@
     { id: uid(), label: 'Filamentwelt', template: 'https://www.filamentwelt.de/search?s={search_keyword}', groupId: 'g3', enabled: true },
     { id: uid(), label: 'Prusa',        template: 'https://www.prusa3d.com/search/?q={search_keyword}', groupId: 'g3', enabled: true },
     { id: uid(), label: 'Anycubic',     template: 'https://store.anycubic.com/search?q={search_keyword}', groupId: 'g3', enabled: true },
+    { id: uid(), label: 'Printables',   template: 'https://www.printables.com/search?q={search_keyword}', groupId: 'g3', enabled: true },
+    { id: uid(), label: 'Thingiverse',  template: 'https://www.thingiverse.com/search?q={search_keyword}&type=things', groupId: 'g3', enabled: true },
+    { id: uid(), label: 'MakerWorld',   template: 'https://makerworld.com/en/search?q={search_keyword}', groupId: 'g3', enabled: true },
+    { id: uid(), label: 'Cults3D',      template: 'https://cults3d.com/de/suche?q={search_keyword}', groupId: 'g3', enabled: true },
+    { id: uid(), label: 'MyMiniFactory', template: 'https://www.myminifactory.com/search/?q={search_keyword}', groupId: 'g3', enabled: true },
 
     // ── Online Marktplätze ──
     { id: uid(), label: 'Amazon DE',    template: 'https://www.amazon.de/s?k={search_keyword}', groupId: 'g4', enabled: true },
@@ -545,19 +550,35 @@
   // ════════════════════════════════════════════════════════
   //  DATA VERSION — migrate old defaults to new categories
   // ════════════════════════════════════════════════════════
-  const DATA_VERSION = 2;
+  const DATA_VERSION = 3;
+  const NEW_URLS_V3 = [
+    { id: uid(), label: 'Printables',   template: 'https://www.printables.com/search?q={search_keyword}', groupId: 'g3', enabled: true },
+    { id: uid(), label: 'Thingiverse',  template: 'https://www.thingiverse.com/search?q={search_keyword}&type=things', groupId: 'g3', enabled: true },
+    { id: uid(), label: 'MakerWorld',   template: 'https://makerworld.com/en/search?q={search_keyword}', groupId: 'g3', enabled: true },
+    { id: uid(), label: 'Cults3D',      template: 'https://cults3d.com/de/suche?q={search_keyword}', groupId: 'g3', enabled: true },
+    { id: uid(), label: 'MyMiniFactory', template: 'https://www.myminifactory.com/search/?q={search_keyword}', groupId: 'g3', enabled: true },
+  ];
   const savedVersion = parseInt(localStorage.getItem('hb_version') || '0', 10);
   if (savedVersion < DATA_VERSION) {
-    // Reset to new defaults if version is old
     const oldGroups = JSON.parse(localStorage.getItem('hb_groups') || 'null');
     if (oldGroups) {
-      // Check if old group names match the pre-update format
-      const isOld = oldGroups.some(g => g.name === 'Austria' || g.name === 'Germany');
-      if (isOld) {
+      // v0→v1/v2: reset if old group names
+      if (savedVersion < 2 && oldGroups.some(g => g.name === 'Austria' || g.name === 'Germany')) {
         localStorage.removeItem('hb_groups');
         localStorage.removeItem('hb_urls');
         localStorage.removeItem('hb_version');
         console.log('Migrated to new categories (v' + DATA_VERSION + ')');
+      } else {
+        // v2→v3: add new 3D model URLs without resetting existing data
+        let existingUrls = JSON.parse(localStorage.getItem('hb_urls') || '[]');
+        const existingTemplates = new Set(existingUrls.map(u => u.template));
+        for (const nu of NEW_URLS_V3) {
+          if (!existingTemplates.has(nu.template)) {
+            existingUrls.push(nu);
+          }
+        }
+        localStorage.setItem('hb_urls', JSON.stringify(existingUrls));
+        console.log('Added new 3D model URLs (v3 migration)');
       }
     }
     localStorage.setItem('hb_version', String(DATA_VERSION));
