@@ -482,22 +482,6 @@
   <!-- Webview controls -->
   <div id="controls"></div>
 
-  <!-- Auto-refresh static controls -->
-  <div id="ar-controls" style="display:flex;align-items:center;gap:8px;padding:4px 8px;background:#222;border-bottom:1px solid #3a3a3a;flex-shrink:0;font-size:11px;">
-    <span class="auto-refresh-group">
-      <strong>🔄 Auto</strong>
-      <select id="arInterval">
-        <option value="30">30s</option>
-        <option value="60" selected>1min</option>
-        <option value="120">2min</option>
-        <option value="300">5min</option>
-        <option value="600">10min</option>
-      </select>
-      <button class="ctrl-btn" id="arToggleBtn" style="font-size:10px;padding:1px 6px;">Auto</button>
-      <span class="ar-countdown" id="ar-countdown"></span>
-    </span>
-  </div>
-
   <!-- Views container -->
   <div id="views-container" style="flex:1;display:flex;flex-direction:column;min-height:0;">
     <!-- Webviews -->
@@ -630,7 +614,7 @@
 
   // ════════════════════════════════════════════════════════
   //  DATA VERSION — migrate old defaults to new categories
-  // ════════════════════════════════════════��═══════════════
+  // ════════════════════════════════════════════════════════
   const DATA_VERSION = 3;
   const NEW_URLS_V3 = [
     { id: uid(), label: 'Printables',   template: 'https://www.printables.com/search?q={search_keyword}', groupId: 'g3', enabled: true },
@@ -720,54 +704,6 @@
     savedSearches.push({ id: uid(), name, query });
     localStorage.setItem('hb_saved', JSON.stringify(savedSearches));
     renderSaved();
-  }
-
-  // ════════════════════════════════════════════════════════
-  //  AUTO-REFRESH
-  // ════════════════════════════════════════════════════════
-  let autoRefreshInterval = null;
-  let autoRefreshCountdown = null;
-  let autoRefreshSeconds = 0;
-  let autoRefreshEnabled = false;
-
-  function startAutoRefresh(seconds) {
-    stopAutoRefresh();
-    autoRefreshEnabled = true;
-    autoRefreshSeconds = seconds;
-    const el = document.getElementById('ar-countdown');
-    let remaining = seconds;
-    const updateCountdown = () => {
-      if (el) el.textContent = remaining + 's';
-      remaining--;
-      if (remaining < 0) remaining = seconds;
-    };
-    updateCountdown();
-    autoRefreshCountdown = setInterval(updateCountdown, 1000);
-    autoRefreshInterval = setInterval(() => {
-      webviews.forEach(wv => {
-        try { wv.reload(); } catch(e) {}
-      });
-    }, seconds * 1000);
-    const btn = document.getElementById('arToggleBtn');
-    if (btn) { btn.textContent = 'Stop'; btn.classList.add('active'); }
-  }
-
-  function stopAutoRefresh() {
-    if (autoRefreshInterval) { clearInterval(autoRefreshInterval); autoRefreshInterval = null; }
-    if (autoRefreshCountdown) { clearInterval(autoRefreshCountdown); autoRefreshCountdown = null; }
-    autoRefreshEnabled = false;
-    const el = document.getElementById('ar-countdown');
-    if (el) el.textContent = '';
-    const btn = document.getElementById('arToggleBtn');
-    if (btn) { btn.textContent = 'Auto'; btn.classList.remove('active'); }
-  }
-
-  function toggleAutoRefresh() {
-    if (autoRefreshEnabled) { stopAutoRefresh(); return; }
-    const sel = document.getElementById('arInterval');
-    if (!sel) return;
-    const seconds = parseInt(sel.value, 10);
-    startAutoRefresh(seconds);
   }
 
   // ════════════════════════════════════════════════════════
@@ -1249,11 +1185,26 @@
     return ph;
   }
 
+  // Attach working Back/Forward/Reload/Hide handlers for a webview instance
+  function attachWebviewControls(index, wv) {
+    document.getElementById(`cb-${index}-back`)?.addEventListener('click', () => {
+      if (wv.canGoBack()) wv.goBack();
+    });
+    document.getElementById(`cb-${index}-fwd`)?.addEventListener('click', () => {
+      if (wv.canGoForward()) wv.goForward();
+    });
+    document.getElementById(`cb-${index}-reload`)?.addEventListener('click', () => {
+      wv.reload();
+    });
+    document.querySelector(`[data-toggle="${index}"]`)?.addEventListener('click', () => {
+      toggleWebview(index);
+    });
+  }
+
   function performSearch() {
     const query = document.getElementById('searchInput').value.trim();
     if (!query) return;
 
-    stopAutoRefresh();
     updateHistory(query);
     clearWebviews();
 
@@ -1303,6 +1254,7 @@
 
       ph.parentNode.replaceChild(wv, ph);
       webviews.push(wv);
+      attachWebviewControls(index, wv);
 
       const loadingEl = document.getElementById(`loading-${index}`);
       if (loadingEl) loadingEl.textContent = 'Loading…';
@@ -1352,7 +1304,6 @@
     if (window.electronAPI) window.electronAPI.clearCookies();
     alert('Cookies cleared!');
   });
-  document.getElementById('arToggleBtn').addEventListener('click', toggleAutoRefresh);
   document.getElementById('clearHistoryBtn').addEventListener('click', () => {
     searchHistory = [];
     localStorage.removeItem('searchHistory');
